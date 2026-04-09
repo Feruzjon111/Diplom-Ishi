@@ -1,0 +1,458 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AmaliyotDocx</title>
+    <style>
+        :root {
+            --bg: #f7f3ff;
+            --card: rgba(255, 255, 255, 0.9);
+            --text: #10233b;
+            --muted: #5f6f8a;
+            --primary: #0d6efd;
+            --primary-dark: #084bb3;
+            --secondary: #ec4899;
+            --tertiary: #14b8a6;
+            --accent: #f59e0b;
+            --violet: #7c3aed;
+            --line: rgba(16, 35, 59, 0.09);
+            --shadow: 0 24px 80px rgba(59, 38, 98, 0.14);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Georgia, "Times New Roman", serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top left, rgba(13, 110, 253, 0.18), transparent 22%),
+                radial-gradient(circle at top right, rgba(236, 72, 153, 0.17), transparent 18%),
+                radial-gradient(circle at bottom left, rgba(20, 184, 166, 0.16), transparent 20%),
+                radial-gradient(circle at bottom right, rgba(245, 158, 11, 0.18), transparent 22%),
+                linear-gradient(180deg, #fdfbff 0%, var(--bg) 100%);
+            overflow-x: hidden;
+        }
+
+        .page {
+            max-width: 1460px;
+            margin: 0 auto;
+            padding: 24px 28px 52px;
+        }
+
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 40px;
+        }
+
+        .brand {
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            text-decoration: none;
+            color: var(--text);
+        }
+
+        .nav {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 18px;
+            border-radius: 999px;
+            text-decoration: none;
+            font-size: 15px;
+            font-weight: 600;
+            transition: transform 0.25s ease, background-color 0.25s ease, box-shadow 0.25s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 14px 28px rgba(16, 35, 59, 0.14);
+        }
+
+        .btn-outline {
+            color: var(--text);
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.78);
+        }
+
+        .btn-primary {
+            color: #fff;
+            background: linear-gradient(135deg, var(--primary), var(--violet));
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, var(--primary-dark), #5b21b6);
+        }
+
+        .hero-card {
+            background: var(--card);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            border-radius: 28px;
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(12px);
+            padding: 46px;
+            animation: riseIn 0.7s ease both;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-card::after {
+            content: "";
+            position: absolute;
+            inset: auto -80px -90px auto;
+            width: 260px;
+            height: 260px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(124, 58, 237, 0.22), transparent 70%);
+            pointer-events: none;
+        }
+
+        .eyebrow {
+            display: inline-block;
+            margin-bottom: 14px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(13, 110, 253, 0.1);
+            color: var(--primary-dark);
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        h1 {
+            margin: 0;
+            max-width: 920px;
+            font-size: clamp(40px, 5vw, 70px);
+            line-height: 1.05;
+        }
+
+        .hero-text {
+            color: var(--muted);
+            font-size: 19px;
+            line-height: 1.8;
+            max-width: 980px;
+        }
+
+        .cta-row {
+            display: flex;
+            gap: 14px;
+            flex-wrap: wrap;
+            margin-top: 26px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+            margin-top: 28px;
+        }
+
+        .stat {
+            padding: 20px;
+            border-radius: 22px;
+            background: rgba(255, 255, 255, 0.78);
+            border: 1px solid var(--line);
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+
+        .stat:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 18px 32px rgba(16, 35, 59, 0.12);
+        }
+
+        .stat strong {
+            display: block;
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        .section-title {
+            margin: 34px 0 16px;
+            font-size: 30px;
+        }
+
+        .modules {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 18px;
+            margin-top: 18px;
+        }
+
+        .module {
+            padding: 22px;
+            border-radius: 22px;
+            background: rgba(255, 255, 255, 0.82);
+            border: 1px solid var(--line);
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+
+        .module:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 18px 32px rgba(16, 35, 59, 0.12);
+        }
+
+        .module h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 20px;
+        }
+
+        .module p {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.7;
+        }
+
+        .timeline {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 18px;
+            margin-top: 18px;
+        }
+
+        .step {
+            padding: 22px;
+            border-radius: 24px;
+            color: #fff;
+            min-height: 180px;
+            box-shadow: var(--shadow);
+            transition: transform 0.25s ease;
+        }
+
+        .step:hover {
+            transform: translateY(-4px);
+        }
+
+        .step:nth-child(1) { background: linear-gradient(135deg, #0d6efd, #4f46e5); }
+        .step:nth-child(2) { background: linear-gradient(135deg, #ec4899, #be185d); }
+        .step:nth-child(3) { background: linear-gradient(135deg, #14b8a6, #0f766e); }
+        .step:nth-child(4) { background: linear-gradient(135deg, #f59e0b, #d97706); }
+
+        .step span {
+            display: inline-flex;
+            width: 38px;
+            height: 38px;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.18);
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+
+        .step h3 {
+            margin: 0 0 10px;
+            font-size: 22px;
+        }
+
+        .step p {
+            margin: 0;
+            color: rgba(255, 255, 255, 0.88);
+            line-height: 1.7;
+        }
+
+        .audience {
+            display: grid;
+            grid-template-columns: 1.15fr 0.85fr;
+            gap: 20px;
+            margin-top: 22px;
+        }
+
+        .audience-main,
+        .audience-side {
+            background: rgba(255, 255, 255, 0.82);
+            border: 1px solid var(--line);
+            border-radius: 26px;
+            padding: 26px;
+            box-shadow: 0 16px 44px rgba(59, 38, 98, 0.08);
+        }
+
+        .bullet-list {
+            margin: 0;
+            padding-left: 20px;
+            color: var(--muted);
+            line-height: 1.9;
+        }
+
+        .badge-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-top: 18px;
+        }
+
+        .mini-badge {
+            padding: 14px 16px;
+            border-radius: 18px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .mini-badge:nth-child(1) { background: linear-gradient(135deg, #7c3aed, #4f46e5); }
+        .mini-badge:nth-child(2) { background: linear-gradient(135deg, #0ea5e9, #0d6efd); }
+        .mini-badge:nth-child(3) { background: linear-gradient(135deg, #ec4899, #db2777); }
+        .mini-badge:nth-child(4) { background: linear-gradient(135deg, #14b8a6, #0f766e); }
+
+        @keyframes riseIn {
+            from {
+                opacity: 0;
+                transform: translateY(22px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 900px) {
+            .modules {
+                grid-template-columns: 1fr;
+            }
+
+            .timeline {
+                grid-template-columns: 1fr;
+            }
+
+            .audience {
+                grid-template-columns: 1fr;
+            }
+
+            .stats {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <div class="topbar">
+            <a class="brand" href="/">AmaliyotDocx</a>
+            <div class="nav">
+                <a class="btn btn-outline" href="{% url 'login' %}">Kirish</a>
+                <a class="btn btn-primary" href="{% url 'register' %}">Ro‘yxatdan o‘tish</a>
+            </div>
+        </div>
+
+        <section class="hero-card">
+            <span class="eyebrow">Talabalar amaliyot tizimi</span>
+            <h1>Amaliyot hujjatlarini tez, tartibli va qulay boshqaring</h1>
+            <p class="hero-text">
+                Tizim orqali talabalar ro‘yxatini yuklash, amaliyot ma’lumotlarini saqlash,
+                Word hujjatlarni shakllantirish, hujjatlarni ZIP holatda yuklab olish va foydalanuvchi
+                profilidan barcha bo‘limlarni boshqarish mumkin. Tizim dekanat, kafedra, fakultet operatori
+                va amaliyot bo‘limlari uchun qulay boshqaruv muhiti sifatida ishlab chiqilgan.
+            </p>
+            <div class="cta-row">
+                <a class="btn btn-primary" href="{% url 'register' %}">Ishni boshlash</a>
+                <a class="btn btn-outline" href="{% url 'login' %}">Tizimga kirish</a>
+            </div>
+            <div class="stats">
+                <div class="stat">
+                    <strong>Excel</strong>
+                    Talabalar ro‘yxatini import qilish
+                </div>
+                <div class="stat">
+                    <strong>DOCX</strong>
+                    Shartnoma, kundalik va yo‘llanma yaratish
+                </div>
+                <div class="stat">
+                    <strong>ZIP</strong>
+                    Barcha hujjatlarni bir faylda yuklash
+                </div>
+            </div>
+        </section>
+
+        <h2 class="section-title">Tizim qanday ishlaydi</h2>
+        <section class="timeline">
+            <article class="step">
+                <span>1</span>
+                <h3>Ro‘yxatdan o‘tish</h3>
+                <p>Foydalanuvchi akkaunt yaratadi va o‘z profili orqali tizimga kiradi.</p>
+            </article>
+            <article class="step">
+                <span>2</span>
+                <h3>Talabalarni yuklash</h3>
+                <p>Excel yoki Word fayldan talabalar ro‘yxati tizimga import qilinadi.</p>
+            </article>
+            <article class="step">
+                <span>3</span>
+                <h3>Hujjatlar yaratish</h3>
+                <p>Shartnoma, kundalik va yo‘llanma hujjatlari avtomatik tayyorlanadi.</p>
+            </article>
+            <article class="step">
+                <span>4</span>
+                <h3>ZIP yuklab olish</h3>
+                <p>Barcha hujjatlar alohida papkalarga joylanib bitta ZIP faylga yig‘iladi.</p>
+            </article>
+        </section>
+
+        <h2 class="section-title">Asosiy bo‘limlar</h2>
+        <section class="modules">
+            <article class="module">
+                <h3>Talabalar moduli</h3>
+                <p>Talabalar haqidagi ma’lumotlarni yuklash, ko‘rish, qidirish va keyinchalik tahrirlash uchun asosiy bo‘lim.</p>
+            </article>
+            <article class="module">
+                <h3>Hujjat generatsiyasi</h3>
+                <p>Bir yoki bir nechta talabaga mos Word hujjatlarni shablon asosida avtomatik shakllantiradi.</p>
+            </article>
+            <article class="module">
+                <h3>Profil va bo‘limlar</h3>
+                <p>Tizimga kirgandan so‘ng profil, to‘lov, yuklash, balans va boshqa boshqaruv bo‘limlari bitta joyda chiqadi.</p>
+            </article>
+            <article class="module">
+                <h3>REST API</h3>
+                <p>Talabalar ma’lumotlarini API endpointlari orqali olish, qo‘shish, yangilash va o‘chirish mumkin.</p>
+            </article>
+            <article class="module">
+                <h3>To‘lov va hisob</h3>
+                <p>Hujjatlar tayyorlash narxini ko‘rish, balansni kuzatish va keyinchalik to‘lov oqimiga ulash uchun tayyor qatlam mavjud.</p>
+            </article>
+            <article class="module">
+                <h3>Admin boshqaruv</h3>
+                <p>Jazzmin asosidagi admin panel orqali foydalanuvchilar va tizim ma’lumotlarini zamonaviy interfeysda boshqarish mumkin.</p>
+            </article>
+        </section>
+
+        <h2 class="section-title">Kimlar uchun mo‘ljallangan</h2>
+        <section class="audience">
+            <div class="audience-main">
+                <p class="hero-text" style="margin-top:0;">
+                    Platforma oliy ta’lim muassasasidagi amaliyot jarayonlarini markazlashgan tarzda yuritish uchun ishlab chiqilgan.
+                    U foydalanuvchilarga ko‘p vaqt oladigan qo‘lda hujjat tayyorlash jarayonlarini qisqartirishga yordam beradi.
+                </p>
+                <ul class="bullet-list">
+                    <li>Dekanat xodimlari uchun talaba ro‘yxatlarini tez boshqarish</li>
+                    <li>Kafedra operatorlari uchun amaliyot hujjatlarini yagona tartibda yaratish</li>
+                    <li>Administratorlar uchun foydalanuvchilar va tizim nazoratini yuritish</li>
+                    <li>Kelgusida statistika, tarix va hisobot bo‘limlarini ulashga tayyor arxitektura</li>
+                </ul>
+            </div>
+            <div class="audience-side">
+                <h3 style="margin-top:0; font-size:24px;">Platforma afzalliklari</h3>
+                <div class="badge-grid">
+                    <div class="mini-badge">Tez import</div>
+                    <div class="mini-badge">Zamonaviy dizayn</div>
+                    <div class="mini-badge">API tayyor</div>
+                    <div class="mini-badge">Admin panel</div>
+                </div>
+            </div>
+        </section>
+    </div>
+</body>
+</html>

@@ -1,10 +1,58 @@
 {% extends "app_excel/base.html" %}
-{% load static %}
-
 {% block title %}Akkount sozlamalari{% endblock %}
 {% block content %}
-<div class="container py-5">
-    <h2>⚙️ Akkount Sozlamalari</h2>
-    <p>Bu yerda kelajakda parolni o‘zgartirish yoki profil ma'lumotlarini tahrirlash funksiyalari bo‘lishi mumkin.</p>
-</div>
+<section class="page-shell">
+    <div class="page-hero">
+        <div>
+            <span class="eyebrow">Sozlamalar</span>
+            <h1>Akkount sozlamalari</h1>
+            <p class="lead">Bu sahifa akkaunt boshqaruvini markazlashtirish uchun tayyorlangan. Keyingi bosqichda parolni o‘zgartirish va profilni tahrirlash shu yerga ulanadi.</p>
+        </div>
+        <div class="summary-grid">
+            <div class="mini-card"><span>Foydalanuvchi</span><strong>{{ user.username }}</strong></div>
+            <div class="mini-card"><span>Email</span><strong>{{ user.email|default:"Yo‘q" }}</strong></div>
+            <div class="mini-card"><span>Balans</span><strong>{{ profile.balance }} so'm</strong></div>
+            <div class="mini-card"><span>Panel</span><strong>Faol</strong></div>
+        </div>
+    </div>
+
+    <div class="section-grid">
+        <div class="section-card">
+            <h2>Parolni yangilash</h2>
+            {% if messages %}
+                {% for msg in messages %}
+                    <div class="{% if 'success' in msg.tags %}alert-success{% else %}alert-danger{% endif %}">{{ msg }}</div>
+                {% endfor %}
+            {% endif %}
+            <form method="post" class="form-grid" style="margin-top: 18px;">
+                {% csrf_token %}
+                <div class="field full">
+                    <label for="current_password">Joriy parol</label>
+                    <input id="current_password" type="password" name="current_password" placeholder="Hozirgi parolingiz" required>
+                </div>
+                <div class="field">
+                    <label for="new_password">Yangi parol</label>
+                    <input id="new_password" type="password" name="new_password" placeholder="Kamida 8 ta belgi" required>
+                </div>
+                <div class="field">
+                    <label for="confirm_password">Yangi parolni tasdiqlang</label>
+                    <input id="confirm_password" type="password" name="confirm_password" placeholder="Parolni qayta kiriting" required>
+                </div>
+                <div class="field full">
+                    <button type="submit">Parolni saqlash</button>
+                </div>
+            </form>
+        </div>
+        <div class="section-card">
+            <h2>Tezkor bo‘limlar</h2>
+            <div class="card-list">
+                <a class="card-link" href="{% url 'profile' %}">Email va profil ma’lumotlarini tahrirlash</a>
+                <a class="card-link" href="{% url 'dashboard' %}">Bildirishnomalar va xavfsizlik sozlamalari</a>
+                <a class="card-link" href="{% url 'profile' %}">Profil sahifasi</a>
+                <a class="card-link" href="{% url 'dashboard' %}">Dashboard</a>
+                <a class="card-link" href="{% url 'upload_excel' %}">Yuklash bo‘limi</a>
+            </div>
+        </div>
+    </div>
+</section>
 {% endblock %}

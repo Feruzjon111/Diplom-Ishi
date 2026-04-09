@@ -4,12 +4,26 @@ from django.contrib.auth import get_user_model
 class Command(BaseCommand):
     def handle(self, *args, **options):
         User = get_user_model()
-        admin_username = 'admin'
-        if User.objects.filter(username=admin_username).exists():
-            User.objects.filter(username=admin_username).delete()
-        User.objects.create_superuser(
-            username=admin_username,
-            email='admin@example.com',
-            password='1'
+        admin, _ = User.objects.get_or_create(
+            username='admin',
+            defaults={'email': 'admin@amaliyotdocx.uz', 'is_staff': True, 'is_superuser': True},
         )
-        self.stdout.write("✅ Admin foydalanuvchi yaratildi.")
+        admin.email = 'admin@amaliyotdocx.uz'
+        admin.is_staff = True
+        admin.is_superuser = True
+        admin.set_password('Admin12345')
+        admin.save()
+
+        operator, _ = User.objects.get_or_create(
+            username='operator',
+            defaults={'email': 'operator@amaliyotdocx.uz', 'first_name': 'Default', 'last_name': 'Operator'},
+        )
+        operator.email = 'operator@amaliyotdocx.uz'
+        operator.first_name = 'Default'
+        operator.last_name = 'Operator'
+        operator.set_password('Operator12345')
+        operator.save()
+
+        self.stdout.write("Admin va default operator foydalanuvchilari yaratildi.")
+        self.stdout.write("Admin login: admin / Admin12345")
+        self.stdout.write("Operator login: operator / Operator12345")

@@ -1,0 +1,86 @@
+{% extends "app_excel/base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<section class="dashboard-shell">
+    <div class="hero-panel">
+        <div>
+            <p class="eyebrow">Boshqaruv paneli</p>
+            <h1>Amaliyot hujjatlarini bitta joydan boshqaring</h1>
+            <p class="lead">
+                Talabalarni yuklang, hujjatlarni tayyorlang va profilingiz orqali barcha bo‘limlarga o‘ting.
+            </p>
+            <div class="hero-actions">
+                <a class="btn secondary" href="/">Bosh sahifa</a>
+                <a class="btn" href="{% url 'upload_excel' %}">Yuklash bo‘limi</a>
+                <a class="btn secondary" href="{% url 'profile' %}">Profilni ko‘rish</a>
+            </div>
+        </div>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <span>Talabalar</span>
+                <strong>{{ student_count }}</strong>
+            </div>
+            <div class="stat-card">
+                <span>Korxonalar</span>
+                <strong>{{ enterprise_count }}</strong>
+            </div>
+            <div class="stat-card">
+                <span>Hujjatlar</span>
+                <strong>{{ document_count }}</strong>
+            </div>
+            <div class="stat-card">
+                <span>Balans</span>
+                <strong>{{ profile.balance }} so'm</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="section-grid">
+        <div class="section-card">
+            <h2>Asosiy bo‘limlar</h2>
+            <div class="quick-links">
+                <a href="/">Bosh sahifa</a>
+                <a href="{% url 'upload_excel' %}">Excel yoki Word yuklash</a>
+                <a href="{% url 'export_all_documents_zip' %}">ZIP yuklab olish</a>
+                <a href="{% url 'pay_view' %}">To‘lovlar</a>
+                <a href="{% url 'balance' %}">Balans</a>
+                <a href="{% url 'account_settings' %}">Sozlamalar</a>
+            </div>
+        </div>
+
+        <div class="section-card">
+            <h2>Oxirgi talabalar</h2>
+            {% if recent_students %}
+                <ul class="student-list">
+                    {% for student in recent_students %}
+                        <li>
+                            <strong>{{ student.full_name }}</strong>
+                            <span>{{ student.group }} | {{ student.company }}</span>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>Hozircha talabalar ma'lumotlari yuklanmagan.</p>
+            {% endif %}
+        </div>
+
+        <div class="section-card">
+            <h2>Faol hujjat shablonlari</h2>
+            <div class="quick-links">
+                {% for template in template_cards %}
+                    <a href="{% url 'download_template_source' template.source_key %}">
+                        {{ template.label }}
+                        {% if template.runtime_ready %}
+                            <span class="muted">DOCX generator tayyor</span>
+                        {% else %}
+                            <span class="muted">DOC manba ulangan, DOCX generator hali ulanmagan</span>
+                        {% endif %}
+                    </a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

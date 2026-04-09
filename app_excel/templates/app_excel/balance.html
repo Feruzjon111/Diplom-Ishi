@@ -1,104 +1,70 @@
 {% extends "app_excel/base.html" %}
-{% load static %}
-
 {% block content %}
-<!DOCTYPE html>
-<html lang="uz">
-<head>
-    <meta charset="UTF-8">
-    <title>Hisob holati</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f1f3f9;
-            margin: 0;
-            padding: 0;
-        }
-
-        .container {
-            max-width: 400px;
-            margin: 60px auto;
-            padding: 30px;
-            background: #fff;
-            border-radius: 12px;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.05);
-            text-align: center;
-        }
-
-        .icon-box {
-            background-color: #f1f5ff;
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 20px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .icon-box img {
-            width: 42px;
-            height: 42px;
-        }
-
-        h2 {
-            font-size: 22px;
-            font-weight: 700;
-            color: #1e293b;
-            margin-bottom: 5px;
-        }
-
-        .sub {
-            color: #64748b;
-            font-size: 14px;
-        }
-
-        .id {
-            font-size: 18px;
-            margin: 10px 0;
-            color: #3b82f6;
-            font-weight: 600;
-        }
-
-        .balance {
-            font-size: 20px;
-            font-weight: 600;
-            color: #dc2626;
-            margin-top: 10px;
-        }
-
-        .btn {
-            display: inline-block;
-            margin-top: 25px;
-            padding: 12px 25px;
-            background-color: #3b82f6;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 15px;
-            text-decoration: none;
-            font-weight: 600;
-            transition: background-color 0.2s;
-        }
-
-        .btn:hover {
-            background-color: #2563eb;
-        }
-    </style>
-</head>
-<body>
-
-<div class="container mt-5">
-    <div class="text-center">
-        <img src="https://cdn-icons-png.flaticon.com/512/4290/4290854.png" width="100" alt="hisob">
-        <h2 class="mt-3">Hisob haqida ma'lumot</h2>
-        <p>Sizning ID raqamingiz: <strong>{{ request.user.id }}</strong></p>
-        <p>Hisobingiz: <strong class="text-danger">{{ request.user.profile.balance }} so‘m</strong></p>
-        <a href="{% url 'pay_view' %}" class="btn btn-primary mt-3">➕ Hisobni to‘ldirish</a>
+<section class="page-shell">
+    <div class="page-hero">
+        <div>
+            <span class="eyebrow">Balans</span>
+            <h1>Hisob holati va demo to‘ldirish</h1>
+            <p class="lead">Joriy balansingizni ko‘ring va demo rejimda hisobni to‘ldiring. Summa yuborilgach mablag‘ darhol profilingiz balansiga qo‘shiladi.</p>
+            <div class="hero-actions">
+                <a class="btn" href="{% url 'pay_view' %}">To‘lov sahifasi</a>
+                <a class="btn secondary" href="{% url 'dashboard' %}">Dashboard</a>
+            </div>
+        </div>
+        <div class="summary-grid">
+            <div class="mini-card"><span>Foydalanuvchi ID</span><strong>{{ request.user.id }}</strong></div>
+            <div class="mini-card"><span>Login</span><strong>{{ request.user.username }}</strong></div>
+            <div class="mini-card"><span>Balans</span><strong>{{ profile.balance }} so'm</strong></div>
+            <div class="mini-card"><span>Holat</span><strong>Faol</strong></div>
+        </div>
     </div>
-</div>
 
-</body>
-</html>
+    <div class="content-grid">
+        <div class="form-card">
+            <h2>Balansni demo to‘ldirish</h2>
+            <p class="lead">Bu bo‘lim test uchun ishlaydi. Hozircha real payment provider ulanmagan.</p>
+
+            {% if messages %}
+                {% for msg in messages %}
+                    <div class="{% if 'success' in msg.tags %}alert-success{% else %}alert-danger{% endif %}">{{ msg }}</div>
+                {% endfor %}
+            {% endif %}
+
+            <form method="post" action="{% url 'top_up_balance' %}" class="form-grid" style="margin-top: 18px;">
+                {% csrf_token %}
+                <div class="field full">
+                    <label for="amount">To‘ldirish summasi</label>
+                    <input id="amount" type="number" name="amount" min="1000" step="1000" placeholder="Masalan: 50000" required>
+                </div>
+                <div class="field full">
+                    <button type="submit">Balansga qo‘shish</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="section-card">
+            <h2>Tezkor summalar</h2>
+            <div class="card-list">
+                <form method="post" action="{% url 'top_up_balance' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="amount" value="50000">
+                    <button type="submit" class="card-link card-button">50 000 so'm qo‘shish</button>
+                </form>
+                <form method="post" action="{% url 'top_up_balance' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="amount" value="100000">
+                    <button type="submit" class="card-link card-button">100 000 so'm qo‘shish</button>
+                </form>
+                <form method="post" action="{% url 'top_up_balance' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="amount" value="300000">
+                    <button type="submit" class="card-link card-button">300 000 so'm qo‘shish</button>
+                </form>
+            </div>
+            <div class="notice">
+                Demo rejim: bu yerda amalga oshirilgan to‘ldirishlar test uchun va darhol balansda aks etadi.
+            </div>
+        </div>
+    </div>
+</section>
 {% endblock %}

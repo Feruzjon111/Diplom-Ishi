@@ -1,105 +1,33 @@
 {% extends "app_excel/base.html" %}
-{% load static %}
-
 {% block content %}
-<!DOCTYPE html>
-<html lang="uz">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>To‘lov sahifasi</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', sans-serif;
-            background-color: #121212;
-            color: #ffffff;
-            margin: 0;
-            padding: 0;
-        }
+<section class="page-shell payment-hero">
+    <div class="form-card">
+        <span class="eyebrow">To‘lov markazi</span>
+        <h1>Hujjatlarni yuklab olish uchun to‘lov</h1>
+        <p class="lead">
+            Hozircha bu sahifa demo ichki oqim bilan ishlaydi. Tashqi payment gateway o‘rniga test rejimida balansni to‘ldirish yoki to‘lov holatini ko‘rish mumkin.
+        </p>
 
-        .container {
-            max-width: 500px;
-            margin: 80px auto;
-            background-color: #1e1e1e;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.5);
-        }
+        <div class="amount-display">{{ amount }} so‘m</div>
 
-        h2 {
-            text-align: center;
-            margin-bottom: 30px;
-            font-size: 26px;
-            color: #00ffa6;
-        }
-
-        p {
-            font-size: 16px;
-            line-height: 1.6;
-        }
-
-        .amount-box {
-            background-color: #2c2c2c;
-            padding: 15px;
-            border-radius: 5px;
-            margin: 20px 0;
-            text-align: center;
-            font-size: 20px;
-            color: #00ffa6;
-        }
-
-        form {
-            text-align: center;
-        }
-
-        button {
-            background-color: #00ffa6;
-            color: #121212;
-            border: none;
-            padding: 12px 25px;
-            font-size: 16px;
-            font-weight: bold;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: 0.3s ease;
-        }
-
-        button:hover {
-            background-color: #00cc88;
-        }
-
-        .note {
-            font-size: 13px;
-            color: #aaa;
-            margin-top: 10px;
-            text-align: center;
-        }
-
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h2>Hujjatlarni Yuklab Olish Uchun To‘lov</h2>
-
-        <p>Amaliyot hujjatlarini yuklab olish uchun quyidagi summani to‘lang:</p>
-
-        <div class="amount-box">
-            <strong>{{ amount }} so‘m</strong>
+        <div class="content-grid" style="margin-top:0;">
+            <div class="soft-panel">
+                <span class="pill">Joriy foydalanuvchi</span>
+                <h3>{{ request.user.username }}</h3>
+                <p class="muted">Merchant ID: {{ payment.merchant_trans_id }}</p>
+            </div>
+            <div class="soft-panel">
+                <span class="pill">Eslatma</span>
+                <p class="muted">Real payment gateway ulanmagan. Demo rejimda balans sahifasi orqali mablag‘ qo‘shish tavsiya etiladi.</p>
+            </div>
         </div>
 
-        <form method="POST" action="https://your-payment-gateway-url">
-            {% csrf_token %}
+        <div class="hero-actions" style="margin-top:22px;">
+            <a class="btn" href="{% url 'balance' %}">Balansni to‘ldirish</a>
+            <a class="btn secondary" href="{% url 'upload_excel' %}">Yuklash bo‘limiga qaytish</a>
+        </div>
 
-            <input type="hidden" name="merchant_id" value="{{ merchant_id }}">
-            <input type="hidden" name="service_id" value="{{ service_id }}">
-            <input type="hidden" name="amount" value="{{ amount }}">
-            <input type="hidden" name="merchant_trans_id" value="{{ payment.merchant_trans_id }}">
-
-            <button type="submit">To‘lovni amalga oshirish</button>
-        </form>
-
-        <p class="note">To‘lov muvaffaqiyatli amalga oshirilgach, hujjatlar ZIP fayl tarzida taqdim etiladi.</p>
+        <div class="notice">Tashqi `your-payment-gateway-url` olib tashlandi. Endi sahifa foydalanuvchini mavjud bo‘lmagan manzilga yubormaydi.</div>
     </div>
-</body>
-</html>
+</section>
 {% endblock %}

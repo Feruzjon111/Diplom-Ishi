@@ -1,158 +1,153 @@
-# 📄 AmaliyotDocx – Talabalar amaliyot hujjatlarini avtomatlashtirish
+# AmaliyotDocx
 
-AmaliyotDocx — bu Django asosida ishlab chiqilgan veb-loyiha bo‘lib, u orqali oliy ta’lim muassasalarining bitiruvchi yoki 3-kurs talabalari uchun amaliyotga tegishli barcha hujjatlarni avtomatik ravishda shakllantirish va ZIP ko‘rinishida yuklab olish imkoniyati yaratilgan.
+AmaliyotDocx Django asosidagi veb-tizim bo‘lib, talabalar amaliyoti uchun kerakli hujjatlarni bitta joyda yuklash, boshqarish va Word formatda yaratish uchun mo‘ljallangan.
 
----
+## Loyiha maqsadi
 
-Loyiha test sifatida ishlayapti: https://boburbek.onrender.com 
+Loyiha maqsadi Excel orqali talabalar ma’lumotlarini qabul qilish va har bir talaba uchun quyidagi hujjatlarni tayyorlash:
 
----
+- `shartnoma.docx`
+- `kundalik.docx`
+- `yollanma.docx`
 
-## 🚀 Loyihaning asosiy imkoniyatlari
+Natijada agar 15 ta talaba bo‘lsa, ZIP ichida 15 ta alohida papka yaratiladi va har bir papka ichida shu talaba uchun 3 ta hujjat bo‘ladi. Agar bir xil korxonada bir nechta talaba amaliyot o‘tayotgan bo‘lsa, shartnomadagi `Talabalar soni` maydoni shu korxona bo‘yicha umumiy sonni ko‘rsatadi.
 
-✅ Excel (`.xlsx`) yoki Word (`.docx`) fayli orqali talabalar ro‘yxatini yuklash  
-✅ Har bir talaba uchun quyidagi hujjatlarni yaratish:
-- `shartnoma.docx` (korxona va universitet o‘rtasidagi)
-- `kundalik.docx` (talaba kundaligi)
-- `yollanma.docx` (yo‘llanma)
+## Asosiy imkoniyatlar
 
-✅ Yuklangan ma’lumotlarga asoslangan holda ZIP fayl ko‘rinishida barcha talabalarning hujjatlarini yuklab olish  
-✅ Har bir talaba uchun alohida papka: `Hujjatlar/1/`, `Hujjatlar/2/` va hokazo  
-✅ Boshlanish va tugash sanalarini foydalanuvchi o‘zi tanlaydi  
-✅ 3-kurs uchun — ishlab chiqarish amaliyoti  
-✅ 4-kurs uchun — bitiruv oldi amaliyoti  
-✅ Talabalar ma’lumotlarini REST API orqali ko‘rish, yaratish, o‘zgartirish, o‘chirish  
-✅ Login / Register orqali tizimga kirish va foydalanuvchi boshqaruvi
+- `.xlsx` yoki `.docx` orqali talabalar ro‘yxatini yuklash
+- bepul `Namuna Excel` yuklab olish
+- namuna Excel ichida 15 ta default talaba ma’lumoti bilan tayyor jadval
+- 3-kurs uchun `Ishlab chiqarish amaliyoti`
+- 4-kurs uchun `Bitiruv oldi amaliyoti`
+- har bir talaba uchun alohida hujjat generatsiyasi
+- barcha hujjatlarni ZIP ko‘rinishida yuklab olish
+- demo balans to‘ldirish
+- login, register, profil va akkaunt sozlamalari
+- parolni yangilash
+- REST API orqali talabalar CRUD
 
----
+## Texnologiyalar
 
-## 🛠 Texnologiyalar
+- `Python 3.12+`
+- `Django 5.x`
+- `Django REST Framework`
+- `python-docx`
+- `openpyxl`
+- `HTML`, `CSS`, `JavaScript`
+- `Jazzmin` admin panel
 
-| Texnologiya       | Izoh |
-|-------------------|------|
-| Python 3.12+      | Backend asosiy dasturlash tili |
-| Django 5.x        | Web-framework |
-| Django REST       | API yaratish uchun |
-| docxtpl           | Word shablon fayllarni to‘ldirish uchun |
-| openpyxl          | Excel fayllarni o‘qish uchun |
-| HTML/CSS (Jinja)  | Templatelar |
+## Ishlash tartibi
 
----
+1. Foydalanuvchi tizimga kiradi.
+2. `Namuna Excel` faylini yuklab oladi yoki o‘z faylini yuklaydi.
+3. Kurs va amaliyot sanalarini tanlaydi.
+4. Tizim talabalarni bazaga saqlaydi.
+5. Har bir talaba uchun `shartnoma`, `kundalik`, `yo‘llanma` tayyorlanadi.
+6. ZIP ichida har bir talaba uchun alohida papka yaratiladi.
 
-## 🔐 Login / Register
+## ZIP tuzilmasi
 
-> Tizimga faqat ro‘yxatdan o‘tgan foydalanuvchilar kirishi mumkin.
-
-- `/login/` – foydalanuvchi kirish
-- `/register/` – yangi foydalanuvchini ro‘yxatga olish
-- `/logout/` – chiqish
-
----
-
-## 📁 Hujjatlar tuzilmasi (zip)
-
-
-````
+```text
 Hujjatlar/
-├── 1/
+├── 01_Aliyev_Bekzod_Anvar_o_g_li/
 │   ├── shartnoma.docx
 │   ├── kundalik.docx
 │   └── yollanma.docx
-├── 2/
-│   ├── ...
+├── 02_Karimova_Maftuna_Jamshid_qizi/
+│   ├── shartnoma.docx
+│   ├── kundalik.docx
+│   └── yollanma.docx
+```
 
-````
+## Asosiy sahifalar
 
-> Har bir papka talabaning tartib raqamiga ko‘ra yaratiladi (id emas).
+- `/` - bosh sahifa
+- `/excel/login/` - kirish
+- `/excel/register/` - ro‘yxatdan o‘tish
+- `/excel/` - dashboard
+- `/excel/upload/` - Excel yoki Word yuklash
+- `/excel/balance/` - balans va demo to‘ldirish
+- `/excel/profile/` - profil
+- `/excel/settings/` - akkaunt sozlamalari
+- `/admin/` - admin panel
 
----
+## Default foydalanuvchilar
 
-## ⚙️ Ishga tushurish (local)
+`python manage.py create_admin` buyrug‘i quyidagi foydalanuvchilarni yaratadi:
 
-1. Loyihani klon qiling:
+- `admin / Admin12345`
+- `operator / Operator12345`
 
-````
+## Loyihani ishga tushirish
+
 ```bash
 git clone https://github.com/xavfli/amaliyotdocx.git
 cd amaliyotdocx
-````
-
-2. Virtual muhit yarating:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-```
-
-3. Talab qilinadigan kutubxonalarni o‘rnating:
-
-```bash
+python -m venv venv
+venv\Scripts\activate
 pip install -r requirements.txt
-```
-
-4. Migratsiyalarni bajarish:
-
-```bash
 python manage.py migrate
-```
-
-5. Superuser yaratish:
-
-```bash
-python manage.py createsuperuser
-```
-
-6. Serverni ishga tushuring:
-
-```bash
+python manage.py create_admin
 python manage.py runserver
 ```
 
----
+SQLite baza vaqtinchalik joyga yozilishi uchun kerak bo‘lsa:
 
-## 🌐 API endpointlari
-
-```http
-GET     /api/students/           - Barcha talabalar ro‘yxati
-POST    /api/students/           - Yangi talaba qo‘shish
-GET     /api/students/<id>/      - Talaba haqida ma’lumot
-PUT     /api/students/<id>/      - Ma’lumotni yangilash
-DELETE  /api/students/<id>/      - Talabani o‘chirish
+```powershell
+$env:SQLITE_DB_PATH = Join-Path $env:TEMP 'amaliyotdocx.sqlite3'
+python manage.py runserver
 ```
 
----
+## API endpointlar
 
-## 📄 Shablonlar joylashuvi
+```http
+GET     /excel/api/students/
+POST    /excel/api/students/
+GET     /excel/api/students/<id>/
+PUT     /excel/api/students/<id>/
+DELETE  /excel/api/students/<id>/
+```
 
-* `app_excel/templates/app_excel/shartnoma_template.docx`
-* `app_excel/templates/app_excel/kundalik_template.docx`
-* `app_excel/templates/app_excel/yollanma_template.docx`
+Qo‘shimcha API:
 
-> Har bir Word fayl `{{ }}` orqali kontekstni oladi.
+```http
+POST    /excel/api/token/
+GET     /excel/api2/students/
+POST    /excel/api2/students/
+GET     /excel/api2/students/<id>/
+PUT     /excel/api2/students/<id>/
+DELETE  /excel/api2/students/<id>/
+```
 
----
+## Template fayllar
 
-## 👨‍💻 Muallif
+Loyiha hozir quyidagi haqiqiy Word blankalar bilan ishlaydi:
 
-**Boburbek (xavfli)**
-GitHub: [xavfli](https://github.com/xavfli)
+- `app_excel/templates/app_excel/shartnoma_template.docx`
+- `app_excel/templates/app_excel/kundalik_template.docx`
+- `app_excel/templates/app_excel/yollanma_template.docx`
 
----
+Nusxalari quyidagi joyda ham mavjud:
 
-## ✅ Foydalanishdagi maqsad
+- `app_shartnoma/contract_templates/shartnoma_template.docx`
+- `app_shartnoma/contract_templates/kundalik_template.docx`
+- `app_shartnoma/contract_templates/yollanma_template.docx`
 
-Ushbu loyiha OTMdagi dekant, fakultet yoki kafedra xodimlari tomonidan bitiruvchi talabalar amaliyoti hujjatlarini avtomatik tarzda shakllantirishni yengillashtirish maqsadida ishlab chiqilgan.
+Asl yuklangan manbalar:
 
----
+- `app_excel/document_sources/Bitiruv oldi Shartnomasi.doc`
+- `app_excel/document_sources/Bitiruv oldi amaliyot Kundalik.doc`
+- `app_excel/document_sources/Bitiruv oldi Yo'llanma.doc`
 
-## 💡 Takliflar
+## Muhim eslatmalar
 
-Agar loyiha sizga foydali bo‘lsa:
+- `Namuna Excel` ichida `Elektron pochta`, `Amaliyot boshlanish sanasi`, `Amaliyot tugash sanasi` ustunlari yo‘q
+- sanalar yuklash formasida alohida tanlanadi
+- balans to‘ldirish hozir demo rejimda ishlaydi
+- hujjatlar `python-docx` orqali to‘ldiriladi
 
-* ⭐ GitHubda yulduz qo‘yish
-* 🤝 Fork qilish
-* 🛠 Yangi featurelar qo‘shish
+## Muallif
 
-xush kelibsiz!
+Boburbek (`xavfli`)
 
 

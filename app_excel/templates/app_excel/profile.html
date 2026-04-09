@@ -1,14 +1,44 @@
 {% extends "app_excel/base.html" %}
-{% load static %}
-
 {% block title %}Profil{% endblock %}
 {% block content %}
-<div class="container py-5">
-    <h2>👤 Profil Ma'lumotlari</h2>
-    <ul>
-        <li><strong>Foydalanuvchi nomi:</strong> {{ user.username }}</li>
-        <li><strong>Email:</strong> {{ user.email|default:"Yo‘q" }}</li>
-        <li><strong>Balans:</strong> {{ profile.balance }} so‘m</li>
-    </ul>
-</div>
+<section class="page-shell">
+    <div class="page-hero">
+        <div>
+            <span class="eyebrow">Profil markazi</span>
+            <h1>Foydalanuvchi profili</h1>
+            <p class="lead">Profilingiz orqali akkaunt ma’lumotlari, balans va tezkor sahifa o‘tishlar bir joyda jamlangan.</p>
+            <div class="hero-actions">
+                <a class="btn" href="{% url 'account_settings' %}">Sozlamalar</a>
+                <a class="btn secondary" href="{% url 'balance' %}">Balans</a>
+            </div>
+        </div>
+        <div class="summary-grid">
+            <div class="mini-card"><span>Login</span><strong>{{ user.username }}</strong></div>
+            <div class="mini-card"><span>Email</span><strong>{{ user.email|default:"Yo‘q" }}</strong></div>
+            <div class="mini-card"><span>Balans</span><strong>{{ profile.balance }} so'm</strong></div>
+            <div class="mini-card"><span>Status</span><strong>Faol</strong></div>
+        </div>
+    </div>
+
+    <div class="profile-grid">
+        <div class="glass-card">
+            <h2>Asosiy ma'lumotlar</h2>
+            <div class="info-list">
+                <div class="info-row"><strong>Foydalanuvchi nomi:</strong> {{ user.username }}</div>
+                <div class="info-row"><strong>Ism:</strong> {{ user.first_name|default:"Kiritilmagan" }}</div>
+                <div class="info-row"><strong>Familiya:</strong> {{ user.last_name|default:"Kiritilmagan" }}</div>
+                <div class="info-row"><strong>Email:</strong> {{ user.email|default:"Yo‘q" }}</div>
+            </div>
+        </div>
+        <div class="glass-card">
+            <h2>Tezkor amallar</h2>
+            <div class="card-list">
+                <a class="card-link" href="{% url 'upload_excel' %}">Talabalar faylini yuklash</a>
+                <a class="card-link" href="{% url 'pay_view' %}">To‘lov sahifasi</a>
+                <a class="card-link" href="{% url 'balance' %}">Balans sahifasi</a>
+                <a class="card-link" href="{% url 'dashboard' %}">Dashboard</a>
+            </div>
+        </div>
+    </div>
+</section>
 {% endblock %}
