@@ -3,32 +3,47 @@
 <html lang="uz">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}AmaliyotDocx{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
     <script src="{% static 'js/script.js' %}" defer></script>
 </head>
-<body class="{% if request.COOKIES.theme == 'dark' %}dark{% endif %}">
+<body>
     <header>
         <nav class="navbar">
-            <div class="navbar-left">
-                <a href="{% url 'upload_excel' %}" class="logo">📁 Hujjatlar</a>
+            <div class="navbar-left brand-row">
+                <a href="/" class="logo">AmaliyotDocx</a>
+                {% if user.is_authenticated %}
+                <div class="nav-links">
+                    <a href="/">Bosh sahifa</a>
+                    <a href="{% url 'dashboard' %}">Dashboard</a>
+                    <a href="{% url 'upload_excel' %}">Yuklash</a>
+                    <a href="{% url 'profile' %}">Profil</a>
+                    <a href="{% url 'pay_view' %}">To‘lov</a>
+                    <a href="{% url 'account_settings' %}">Sozlamalar</a>
+                </div>
+                {% endif %}
             </div>
 
             {% if user.is_authenticated %}
             <div class="navbar-right">
                 <span class="user-info">
-                    👤 {{ user.username }} | 💰 {{ user.profile.balance|default:0 }} so'm
+                    {{ user.username }} | {{ user.profile.balance|default:0 }} so'm
                 </span>
+                <button type="button" class="theme-toggle" id="themeToggle" aria-label="Rejimni almashtirish">
+                    <span class="theme-icon theme-icon-sun" aria-hidden="true">☀</span>
+                    <span class="theme-icon theme-icon-moon" aria-hidden="true">☾</span>
+                </button>
 
-                <div class="dropdown">
-                    <button class="dropbtn">👤 Profil ▾</button>
-                    <div class="dropdown-content">
+                <div class="dropdown" id="profileDropdown">
+                    <button type="button" class="dropbtn" id="profileMenuButton" aria-expanded="false">Profil <span class="caret">▾</span></button>
+                    <div class="dropdown-content" id="profileMenu">
                         <a href="{% url 'profile' %}">Profil</a>
                         <a href="{% url 'account_settings' %}">Akkount sozlamalar</a>
                         <a href="{% url 'pay_view' %}">To‘lovlar</a>
-                        <a href="#" onclick="toggleDarkMode()">🌙 Tungi rejim</a>
-                        <a href="{% url 'balance' %}">➕ Balansni to‘ldirish</a>
-                        <a href="{% url 'logout' %}">🚪 Chiqish</a>
+                        <a href="{% url 'upload_excel' %}">Fayl yuklash</a>
+                        <a href="{% url 'balance' %}">Balansni to‘ldirish</a>
+                        <a href="{% url 'logout' %}">Chiqish</a>
                     </div>
                 </div>
             </div>

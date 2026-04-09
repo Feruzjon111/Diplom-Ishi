@@ -25,7 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-b6hv(b=y6+b*iohifb$me$2k&=&bl^hwb2d3wrwcu6@z)qa$1e'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() == "true"
 
 ALLOWED_HOSTS = ['.onrender.com', '127.0.0.1', 'localhost']
 
@@ -34,6 +34,7 @@ ALLOWED_HOSTS = ['.onrender.com', '127.0.0.1', 'localhost']
 # Application definition
 
 INSTALLED_APPS = [
+    'jazzmin',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -95,10 +96,13 @@ WSGI_APPLICATION = 'amaliyotdocx.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+DEFAULT_SQLITE_PATH = os.path.join(os.getenv("TEMP", str(BASE_DIR)), "amaliyotdocx.sqlite3")
+SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", DEFAULT_SQLITE_PATH)
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': SQLITE_DB_PATH,
     }
 }
 
@@ -171,6 +175,18 @@ CSRF_FAILURE_VIEW = 'app_excel.views.csrf_failure'
 
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 365  # 1 yil eslab qolish
+
+
+JAZZMIN_SETTINGS = {
+    "site_title": "AmaliyotDocx Admin",
+    "site_header": "AmaliyotDocx",
+    "site_brand": "AmaliyotDocx",
+    "welcome_sign": "AmaliyotDocx boshqaruv paneli",
+    "copyright": "AmaliyotDocx",
+    "navigation_expanded": True,
+    "show_sidebar": True,
+    "changeform_format": "horizontal_tabs",
+}
 
 
 

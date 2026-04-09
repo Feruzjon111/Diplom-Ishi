@@ -1,19 +1,37 @@
-// Tungi rejimni yoqish/o‘chirish
-function toggleDarkMode() {
-    const body = document.body;
-    body.classList.toggle("dark-mode");
-
-    // Saqlash uchun localStorage
-    if (body.classList.contains("dark-mode")) {
-        localStorage.setItem("theme", "dark");
-    } else {
-        localStorage.setItem("theme", "light");
-    }
+function applyTheme(theme) {
+    document.body.classList.toggle("dark-mode", theme === "dark");
+    localStorage.setItem("theme", theme);
 }
 
-// Sahifa yuklanganda foydalanuvchi tanlovini tiklash
+function toggleDarkMode() {
+    const nextTheme = document.body.classList.contains("dark-mode") ? "light" : "dark";
+    applyTheme(nextTheme);
+}
+
 window.addEventListener("DOMContentLoaded", () => {
-    if (localStorage.getItem("theme") === "dark") {
-        document.body.classList.add("dark-mode");
+    const savedTheme = localStorage.getItem("theme") || "light";
+    applyTheme(savedTheme);
+
+    const themeToggle = document.getElementById("themeToggle");
+    if (themeToggle) {
+        themeToggle.addEventListener("click", toggleDarkMode);
+    }
+
+    const dropdown = document.getElementById("profileDropdown");
+    const menuButton = document.getElementById("profileMenuButton");
+
+    if (dropdown && menuButton) {
+        menuButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            const isOpen = dropdown.classList.toggle("open");
+            menuButton.setAttribute("aria-expanded", String(isOpen));
+        });
+
+        document.addEventListener("click", (event) => {
+            if (!dropdown.contains(event.target)) {
+                dropdown.classList.remove("open");
+                menuButton.setAttribute("aria-expanded", "false");
+            }
+        });
     }
 });

@@ -2,15 +2,15 @@
 {% block content %}
 <div class="error-container" style="text-align: center; padding: 50px;">
   <h1 style="color: crimson;">403 - Xavfsizlik xatosi</h1>
-  <p>⚠️ Formani yuborishda xavfsizlik tekshiruvi muvaffaqiyatsiz tugadi (CSRF token noto‘g‘ri yoki muddati o‘tgan).</p>
+  <p>Formani yuborishda xavfsizlik tekshiruvi muvaffaqiyatsiz tugadi (CSRF token noto‘g‘ri yoki muddati o‘tgan).</p>
 
   <div style="margin: 30px 0;">
-    <a href="" onclick="window.location.reload();" class="btn btn-info">🔁 Sahifani qayta yuklash</a>
-    <a href="{% url 'logout' %}" class="btn btn-danger">🚪 Chiqish (Logout)</a>
-    <a href="{% url 'login' %}" class="btn btn-primary">🔐 Qayta Kirish</a>
+    <a href="" onclick="window.location.reload();" class="btn btn-info">Sahifani qayta yuklash</a>
+    <a href="{% url 'logout' %}" class="btn btn-danger">Chiqish</a>
+    <a href="{% url 'login' %}" class="btn btn-primary">Qayta kirish</a>
   </div>
 
-  <p>🔄 5 soniya ichida avtomatik bosh sahifaga yo‘naltirilasiz...</p>
+  <p>5 soniya ichida avtomatik bosh sahifaga yo‘naltirilasiz...</p>
 </div>
 
 <script>

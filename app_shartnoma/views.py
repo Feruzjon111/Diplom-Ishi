@@ -8,13 +8,8 @@ from django.conf import settings
 def generate_contracts_download(request):
     students = Student.objects.all()
 
-    if not os.path.exists(template_path):
-        return HttpResponse(f" Fayl topilmadi: {template_path}", status=404)
-
     if not students.exists():
         return HttpResponse(" Talabalar mavjud emas.")
-
-    s = students.first()
 
     template_path = os.path.join(
         settings.BASE_DIR,
@@ -22,6 +17,11 @@ def generate_contracts_download(request):
         'contract_templates',
         'shartnoma_template.docx'
     )
+
+    if not os.path.exists(template_path):
+        return HttpResponse(f"Fayl topilmadi: {template_path}", status=404)
+
+    s = students.first()
 
     doc = Document(template_path)
 
