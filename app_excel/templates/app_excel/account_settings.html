@@ -6,26 +6,54 @@
         <div>
             <span class="eyebrow">Sozlamalar</span>
             <h1>Akkount sozlamalari</h1>
-            <p class="lead">Bu sahifa akkaunt boshqaruvini markazlashtirish uchun tayyorlangan. Keyingi bosqichda parolni o‘zgartirish va profilni tahrirlash shu yerga ulanadi.</p>
+            <p class="lead">Profil ma'lumotlari va parolni shu sahifadan yangilashingiz mumkin.</p>
         </div>
         <div class="summary-grid">
             <div class="mini-card"><span>Foydalanuvchi</span><strong>{{ user.username }}</strong></div>
-            <div class="mini-card"><span>Email</span><strong>{{ user.email|default:"Yo‘q" }}</strong></div>
-            <div class="mini-card"><span>Balans</span><strong>{{ profile.balance }} so'm</strong></div>
+            <div class="mini-card"><span>Email</span><strong>{{ user.email|default:"Yo'q" }}</strong></div>
             <div class="mini-card"><span>Panel</span><strong>Faol</strong></div>
         </div>
     </div>
 
+    {% if messages %}
+        {% for msg in messages %}
+            <div class="{% if 'success' in msg.tags %}alert-success{% else %}alert-danger{% endif %}">{{ msg }}</div>
+        {% endfor %}
+    {% endif %}
+
     <div class="section-grid">
-        <div class="section-card">
-            <h2>Parolni yangilash</h2>
-            {% if messages %}
-                {% for msg in messages %}
-                    <div class="{% if 'success' in msg.tags %}alert-success{% else %}alert-danger{% endif %}">{{ msg }}</div>
-                {% endfor %}
-            {% endif %}
+        <div class="section-card" id="profile-form">
+            <h2>Profilni tahrirlash</h2>
             <form method="post" class="form-grid" style="margin-top: 18px;">
                 {% csrf_token %}
+                <input type="hidden" name="action" value="profile">
+                <div class="field">
+                    <label for="username">Foydalanuvchi nomi</label>
+                    <input id="username" type="text" name="username" value="{{ user.username }}" required>
+                </div>
+                <div class="field">
+                    <label for="email">Email</label>
+                    <input id="email" type="email" name="email" value="{{ user.email }}">
+                </div>
+                <div class="field">
+                    <label for="first_name">Ism</label>
+                    <input id="first_name" type="text" name="first_name" value="{{ user.first_name }}">
+                </div>
+                <div class="field">
+                    <label for="last_name">Familiya</label>
+                    <input id="last_name" type="text" name="last_name" value="{{ user.last_name }}">
+                </div>
+                <div class="field full">
+                    <button type="submit">Ma'lumotlarni saqlash</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="section-card">
+            <h2>Parolni yangilash</h2>
+            <form method="post" class="form-grid" style="margin-top: 18px;">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="password">
                 <div class="field full">
                     <label for="current_password">Joriy parol</label>
                     <input id="current_password" type="password" name="current_password" placeholder="Hozirgi parolingiz" required>
@@ -43,14 +71,15 @@
                 </div>
             </form>
         </div>
+    </div>
+
+    <div class="section-grid" style="margin-top: 24px;">
         <div class="section-card">
-            <h2>Tezkor bo‘limlar</h2>
+            <h2>Tezkor bo'limlar</h2>
             <div class="card-list">
-                <a class="card-link" href="{% url 'profile' %}">Email va profil ma’lumotlarini tahrirlash</a>
-                <a class="card-link" href="{% url 'dashboard' %}">Bildirishnomalar va xavfsizlik sozlamalari</a>
                 <a class="card-link" href="{% url 'profile' %}">Profil sahifasi</a>
                 <a class="card-link" href="{% url 'dashboard' %}">Dashboard</a>
-                <a class="card-link" href="{% url 'upload_excel' %}">Yuklash bo‘limi</a>
+                <a class="card-link" href="{% url 'upload_excel' %}">Yuklash bo'limi</a>
             </div>
         </div>
     </div>

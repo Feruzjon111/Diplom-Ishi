@@ -178,11 +178,11 @@ SESSION_COOKIE_AGE = 60 * 60 * 24 * 365  # 1 yil eslab qolish
 
 
 JAZZMIN_SETTINGS = {
-    "site_title": "AmaliyotDocx Admin",
-    "site_header": "AmaliyotDocx",
-    "site_brand": "AmaliyotDocx",
-    "welcome_sign": "AmaliyotDocx boshqaruv paneli",
-    "copyright": "AmaliyotDocx",
+    "site_title": "e-Praktika Admin",
+    "site_header": "e-Praktika",
+    "site_brand": "e-Praktika",
+    "welcome_sign": "e-Praktika boshqaruv paneli",
+    "copyright": "e-Praktika",
     "navigation_expanded": True,
     "show_sidebar": True,
     "changeform_format": "horizontal_tabs",

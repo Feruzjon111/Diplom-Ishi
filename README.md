@@ -1,6 +1,6 @@
-# AmaliyotDocx
+# e-Praktika
 
-AmaliyotDocx Django asosidagi veb-tizim bo‘lib, talabalar amaliyoti uchun kerakli hujjatlarni bitta joyda yuklash, boshqarish va Word formatda yaratish uchun mo‘ljallangan.
+e-Praktika Django asosidagi veb-tizim bo‘lib, talabalar amaliyoti uchun kerakli hujjatlarni bitta joyda yuklash, boshqarish va Word formatda yaratish uchun mo‘ljallangan.
 
 ## Loyiha maqsadi
 
@@ -21,7 +21,6 @@ Natijada agar 15 ta talaba bo‘lsa, ZIP ichida 15 ta alohida papka yaratiladi v
 - 4-kurs uchun `Bitiruv oldi amaliyoti`
 - har bir talaba uchun alohida hujjat generatsiyasi
 - barcha hujjatlarni ZIP ko‘rinishida yuklab olish
-- demo balans to‘ldirish
 - login, register, profil va akkaunt sozlamalari
 - parolni yangilash
 - REST API orqali talabalar CRUD
@@ -66,7 +65,6 @@ Hujjatlar/
 - `/excel/register/` - ro‘yxatdan o‘tish
 - `/excel/` - dashboard
 - `/excel/upload/` - Excel yoki Word yuklash
-- `/excel/balance/` - balans va demo to‘ldirish
 - `/excel/profile/` - profil
 - `/excel/settings/` - akkaunt sozlamalari
 - `/admin/` - admin panel
@@ -143,7 +141,6 @@ Asl yuklangan manbalar:
 
 - `Namuna Excel` ichida `Elektron pochta`, `Amaliyot boshlanish sanasi`, `Amaliyot tugash sanasi` ustunlari yo‘q
 - sanalar yuklash formasida alohida tanlanadi
-- balans to‘ldirish hozir demo rejimda ishlaydi
 - hujjatlar `python-docx` orqali to‘ldiriladi
 
 ## Muallif

@@ -1,14 +1,15 @@
-{% load static %}
 <!DOCTYPE html>
 <html lang="uz">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AmaliyotDocx</title>
+    <title>e-Praktika</title>
     <style>
         :root {
             --bg: #f7f3ff;
             --card: rgba(255, 255, 255, 0.9);
+            --panel: rgba(255, 255, 255, 0.82);
+            --stat-panel: rgba(255, 255, 255, 0.78);
             --text: #10233b;
             --muted: #5f6f8a;
             --primary: #0d6efd;
@@ -19,6 +20,26 @@
             --violet: #7c3aed;
             --line: rgba(16, 35, 59, 0.09);
             --shadow: 0 24px 80px rgba(59, 38, 98, 0.14);
+            --hero-border: rgba(255, 255, 255, 0.6);
+            --page-start: #fdfbff;
+            --outline-bg: rgba(255, 255, 255, 0.78);
+            --hover-shadow: rgba(16, 35, 59, 0.12);
+        }
+
+        body.dark-mode {
+            --bg: #111827;
+            --card: rgba(17, 24, 39, 0.9);
+            --panel: rgba(31, 41, 55, 0.82);
+            --stat-panel: rgba(31, 41, 55, 0.78);
+            --text: #f8fafc;
+            --muted: #cbd5e1;
+            --primary-dark: #93c5fd;
+            --line: rgba(226, 232, 240, 0.16);
+            --shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+            --hero-border: rgba(148, 163, 184, 0.18);
+            --page-start: #020617;
+            --outline-bg: rgba(15, 23, 42, 0.72);
+            --hover-shadow: rgba(0, 0, 0, 0.24);
         }
 
         * {
@@ -34,8 +55,9 @@
                 radial-gradient(circle at top right, rgba(236, 72, 153, 0.17), transparent 18%),
                 radial-gradient(circle at bottom left, rgba(20, 184, 166, 0.16), transparent 20%),
                 radial-gradient(circle at bottom right, rgba(245, 158, 11, 0.18), transparent 22%),
-                linear-gradient(180deg, #fdfbff 0%, var(--bg) 100%);
+                linear-gradient(180deg, var(--page-start) 0%, var(--bg) 100%);
             overflow-x: hidden;
+            transition: background 0.25s ease, color 0.25s ease;
         }
 
         .page {
@@ -64,6 +86,27 @@
             display: flex;
             gap: 12px;
             flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .auth-links,
+        .guest-links {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .auth-links {
+            display: none;
+        }
+
+        body[data-authenticated="true"] .auth-links {
+            display: flex;
+        }
+
+        body[data-authenticated="true"] .guest-links {
+            display: none;
         }
 
         .btn {
@@ -80,13 +123,13 @@
 
         .btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 14px 28px rgba(16, 35, 59, 0.14);
+            box-shadow: 0 14px 28px var(--hover-shadow);
         }
 
         .btn-outline {
             color: var(--text);
             border: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.78);
+            background: var(--outline-bg);
         }
 
         .btn-primary {
@@ -98,9 +141,52 @@
             background: linear-gradient(135deg, var(--primary-dark), #5b21b6);
         }
 
+        .theme-toggle {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 46px;
+            height: 46px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            color: var(--text);
+            background: var(--outline-bg);
+            cursor: pointer;
+            box-shadow: 0 10px 24px rgba(16, 35, 59, 0.08);
+            transition: transform 0.25s ease, background-color 0.25s ease, box-shadow 0.25s ease;
+        }
+
+        .theme-toggle:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 14px 28px var(--hover-shadow);
+        }
+
+        .theme-icon {
+            position: absolute;
+            font-size: 18px;
+            line-height: 1;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+
+        .theme-icon-moon {
+            opacity: 0;
+            transform: rotate(-45deg) scale(0.8);
+        }
+
+        body.dark-mode .theme-icon-sun {
+            opacity: 0;
+            transform: rotate(45deg) scale(0.8);
+        }
+
+        body.dark-mode .theme-icon-moon {
+            opacity: 1;
+            transform: rotate(0) scale(1);
+        }
+
         .hero-card {
             background: var(--card);
-            border: 1px solid rgba(255, 255, 255, 0.6);
+            border: 1px solid var(--hero-border);
             border-radius: 28px;
             box-shadow: var(--shadow);
             backdrop-filter: blur(12px);
@@ -148,13 +234,6 @@
             max-width: 980px;
         }
 
-        .cta-row {
-            display: flex;
-            gap: 14px;
-            flex-wrap: wrap;
-            margin-top: 26px;
-        }
-
         .stats {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -165,14 +244,14 @@
         .stat {
             padding: 20px;
             border-radius: 22px;
-            background: rgba(255, 255, 255, 0.78);
+            background: var(--stat-panel);
             border: 1px solid var(--line);
-            transition: transform 0.25s ease, box-shadow 0.25s ease;
+            transition: transform 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease, border-color 0.25s ease;
         }
 
         .stat:hover {
             transform: translateY(-4px);
-            box-shadow: 0 18px 32px rgba(16, 35, 59, 0.12);
+            box-shadow: 0 18px 32px var(--hover-shadow);
         }
 
         .stat strong {
@@ -196,14 +275,14 @@
         .module {
             padding: 22px;
             border-radius: 22px;
-            background: rgba(255, 255, 255, 0.82);
+            background: var(--panel);
             border: 1px solid var(--line);
             transition: transform 0.25s ease, box-shadow 0.25s ease;
         }
 
         .module:hover {
             transform: translateY(-4px);
-            box-shadow: 0 18px 32px rgba(16, 35, 59, 0.12);
+            box-shadow: 0 18px 32px var(--hover-shadow);
         }
 
         .module h3 {
@@ -275,11 +354,11 @@
 
         .audience-main,
         .audience-side {
-            background: rgba(255, 255, 255, 0.82);
+            background: var(--panel);
             border: 1px solid var(--line);
             border-radius: 26px;
             padding: 26px;
-            box-shadow: 0 16px 44px rgba(59, 38, 98, 0.08);
+            box-shadow: 0 16px 44px var(--hover-shadow);
         }
 
         .bullet-list {
@@ -335,21 +414,41 @@
             .stats {
                 grid-template-columns: 1fr;
             }
+
+            .topbar {
+                align-items: flex-start;
+                flex-direction: column;
+            }
         }
     </style>
 </head>
-<body>
+<body data-authenticated="{{ user.is_authenticated|yesno:'true,false' }}">
     <div class="page">
         <div class="topbar">
-            <a class="brand" href="/">AmaliyotDocx</a>
+            <a class="brand" href="/">e-Praktika</a>
             <div class="nav">
-                <a class="btn btn-outline" href="{% url 'login' %}">Kirish</a>
-                <a class="btn btn-primary" href="{% url 'register' %}">Ro‘yxatdan o‘tish</a>
+                <div class="auth-links" aria-label="Foydalanuvchi menyusi">
+                    <a class="btn btn-outline" href="/excel/">Dashboard</a>
+                    <a class="btn btn-primary" href="/excel/profile/">Profil</a>
+                </div>
+                <div class="guest-links" aria-label="Kirish menyusi">
+                    <a class="btn btn-outline" href="/excel/login/">Kirish</a>
+                    <a class="btn btn-primary" href="/excel/register/">Ro'yxatdan o'tish</a>
+                </div>
+                <div class="language-switcher" aria-label="Til tanlash">
+                    <button type="button" class="lang-option" data-lang="uz">UZ</button>
+                    <button type="button" class="lang-option" data-lang="ru">RU</button>
+                    <button type="button" class="lang-option" data-lang="en">EN</button>
+                </div>
+                <button type="button" class="theme-toggle" id="themeToggle" aria-label="Rejimni almashtirish" title="Kunduzgi/tungi rejim">
+                    <span class="theme-icon theme-icon-sun" aria-hidden="true">☀</span>
+                    <span class="theme-icon theme-icon-moon" aria-hidden="true">☾</span>
+                </button>
             </div>
         </div>
 
         <section class="hero-card">
-            <span class="eyebrow">Talabalar amaliyot tizimi</span>
+            <span class="eyebrow">e-Praktika</span>
             <h1>Amaliyot hujjatlarini tez, tartibli va qulay boshqaring</h1>
             <p class="hero-text">
                 Tizim orqali talabalar ro‘yxatini yuklash, amaliyot ma’lumotlarini saqlash,
@@ -357,10 +456,6 @@
                 profilidan barcha bo‘limlarni boshqarish mumkin. Tizim dekanat, kafedra, fakultet operatori
                 va amaliyot bo‘limlari uchun qulay boshqaruv muhiti sifatida ishlab chiqilgan.
             </p>
-            <div class="cta-row">
-                <a class="btn btn-primary" href="{% url 'register' %}">Ishni boshlash</a>
-                <a class="btn btn-outline" href="{% url 'login' %}">Tizimga kirish</a>
-            </div>
             <div class="stats">
                 <div class="stat">
                     <strong>Excel</strong>
@@ -413,15 +508,11 @@
             </article>
             <article class="module">
                 <h3>Profil va bo‘limlar</h3>
-                <p>Tizimga kirgandan so‘ng profil, to‘lov, yuklash, balans va boshqa boshqaruv bo‘limlari bitta joyda chiqadi.</p>
+                <p>Tizimga kirgandan so‘ng profil, yuklash va boshqa boshqaruv bo‘limlari bitta joyda chiqadi.</p>
             </article>
             <article class="module">
                 <h3>REST API</h3>
                 <p>Talabalar ma’lumotlarini API endpointlari orqali olish, qo‘shish, yangilash va o‘chirish mumkin.</p>
-            </article>
-            <article class="module">
-                <h3>To‘lov va hisob</h3>
-                <p>Hujjatlar tayyorlash narxini ko‘rish, balansni kuzatish va keyinchalik to‘lov oqimiga ulash uchun tayyor qatlam mavjud.</p>
             </article>
             <article class="module">
                 <h3>Admin boshqaruv</h3>
@@ -454,5 +545,27 @@
             </div>
         </section>
     </div>
+    <script>
+        function applyTheme(theme) {
+            document.body.classList.toggle("dark-mode", theme === "dark");
+            localStorage.setItem("theme", theme);
+        }
+
+        function toggleDarkMode() {
+            const nextTheme = document.body.classList.contains("dark-mode") ? "light" : "dark";
+            applyTheme(nextTheme);
+        }
+
+        window.addEventListener("DOMContentLoaded", () => {
+            const savedTheme = localStorage.getItem("theme") || "light";
+            applyTheme(savedTheme);
+
+            const themeToggle = document.getElementById("themeToggle");
+            if (themeToggle) {
+                themeToggle.addEventListener("click", toggleDarkMode);
+            }
+        });
+    </script>
+    <script src="/static/js/i18n.js" defer></script>
 </body>
 </html>

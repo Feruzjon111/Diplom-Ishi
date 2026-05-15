@@ -30,10 +30,6 @@
                 <span>Hujjatlar</span>
                 <strong>{{ document_count }}</strong>
             </div>
-            <div class="stat-card">
-                <span>Balans</span>
-                <strong>{{ profile.balance }} so'm</strong>
-            </div>
         </div>
     </div>
 
@@ -44,42 +40,41 @@
                 <a href="/">Bosh sahifa</a>
                 <a href="{% url 'upload_excel' %}">Excel yoki Word yuklash</a>
                 <a href="{% url 'export_all_documents_zip' %}">ZIP yuklab olish</a>
-                <a href="{% url 'pay_view' %}">To‘lovlar</a>
-                <a href="{% url 'balance' %}">Balans</a>
                 <a href="{% url 'account_settings' %}">Sozlamalar</a>
             </div>
         </div>
 
-        <div class="section-card">
-            <h2>Oxirgi talabalar</h2>
+        <div class="section-card student-card" id="students-list">
+            <h2>Yuklangan talabalar{% if student_count %} ({{ student_count }}){% endif %}</h2>
             {% if recent_students %}
-                <ul class="student-list">
-                    {% for student in recent_students %}
-                        <li>
-                            <strong>{{ student.full_name }}</strong>
-                            <span>{{ student.group }} | {{ student.company }}</span>
-                        </li>
-                    {% endfor %}
-                </ul>
+                <div class="student-list-scroll">
+                    <ul class="student-list">
+                        {% for student in recent_students %}
+                            <li>
+                                <strong>{{ student.full_name }}</strong>
+                                <span>{{ student.group }} | {{ student.company }}</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% if student_page.has_other_pages %}
+                    <div class="student-pagination" aria-label="Talabalar sahifalari">
+                        {% if student_page.has_previous %}
+                            <a class="page-link" href="?students_page={{ student_page.previous_page_number }}#students-list">Oldingi</a>
+                        {% else %}
+                            <span class="page-link disabled">Oldingi</span>
+                        {% endif %}
+                        <span class="page-status">{{ student_page.number }} / {{ student_page.paginator.num_pages }}</span>
+                        {% if student_page.has_next %}
+                            <a class="page-link" href="?students_page={{ student_page.next_page_number }}#students-list">Keyingi</a>
+                        {% else %}
+                            <span class="page-link disabled">Keyingi</span>
+                        {% endif %}
+                    </div>
+                {% endif %}
             {% else %}
                 <p>Hozircha talabalar ma'lumotlari yuklanmagan.</p>
             {% endif %}
-        </div>
-
-        <div class="section-card">
-            <h2>Faol hujjat shablonlari</h2>
-            <div class="quick-links">
-                {% for template in template_cards %}
-                    <a href="{% url 'download_template_source' template.source_key %}">
-                        {{ template.label }}
-                        {% if template.runtime_ready %}
-                            <span class="muted">DOCX generator tayyor</span>
-                        {% else %}
-                            <span class="muted">DOC manba ulangan, DOCX generator hali ulanmagan</span>
-                        {% endif %}
-                    </a>
-                {% endfor %}
-            </div>
         </div>
     </div>
 </section>

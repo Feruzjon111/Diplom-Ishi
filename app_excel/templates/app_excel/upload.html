@@ -6,21 +6,16 @@
             <span class="eyebrow">Import markazi</span>
             <h1>Talabalar ma'lumotlarini yuklash</h1>
             <p class="lead">
-                Excel yoki Word fayldagi ro‘yxatni tizimga yuklang. Kurs va amaliyot sanalari saqlanadi, keyin hujjatlar yaratish va ZIP eksport qilish mumkin bo‘ladi.
+                Excel yoki Word fayldagi ro'yxatni tizimga yuklang. Excel namuna ichida kurs, boshlanish sanasi va tugash sanasi ham bo'ladi, keyin hujjatlar yaratish va ZIP eksport qilish mumkin bo'ladi.
             </p>
             <div class="hero-actions">
                 <a class="btn" href="{% url 'dashboard' %}">Dashboard</a>
-                <a class="btn secondary" href="{% url 'balance' %}">Balans sahifasi</a>
             </div>
         </div>
         <div class="summary-grid">
             <div class="metric-card">
                 <span>Foydalanuvchi</span>
                 <strong>{{ request.user.username }}</strong>
-            </div>
-            <div class="metric-card">
-                <span>Balans</span>
-                <strong>{{ profile.balance }} so'm</strong>
             </div>
             <div class="metric-card">
                 <span>ID</span>
@@ -35,18 +30,15 @@
 
     <div class="content-grid">
         <div class="glass-card">
-            <h2>Yuklash bo‘yicha ko‘rsatma</h2>
+            <h2>Yuklash bo'yicha ko'rsatma</h2>
             <div class="card-list">
                 <div class="card-link">1. Talabalar faylini tanlang</div>
-                <div class="card-link">2. Kurs va sanalarni belgilang</div>
+                <div class="card-link">2. Excel ichidagi barcha ustunlarni to'ldiring</div>
                 <div class="card-link">3. Ma'lumotlarni tizimga yuboring</div>
                 <div class="card-link">4. Keyingi bosqichda hujjatlarni yuklab oling</div>
             </div>
             <div class="hero-actions" style="margin-top:18px;">
                 <a class="btn secondary" href="{% url 'download_sample_excel' %}">Namuna Excel yuklab olish</a>
-            </div>
-            <div class="notice">
-                Namuna Excel bepul beriladi. Fayl ichida faqat to‘ldirilishi kerak bo‘lgan ustun nomlari mavjud.
             </div>
             <div class="card-list" style="margin-top:18px;">
                 {% for template in template_sources %}
@@ -60,18 +52,6 @@
                     </a>
                 {% endfor %}
             </div>
-            <div class="card-list" style="margin-top:18px;">
-                {% for template in template_cards %}
-                    <div class="card-link">
-                        {{ template.label }} generator holati
-                        {% if template.runtime_ready %}
-                            <span class="muted">DOCX shablon tayyor</span>
-                        {% else %}
-                            <span class="muted">DOC manba ulandi, generator uchun DOCX shablon kerak</span>
-                        {% endif %}
-                    </div>
-                {% endfor %}
-            </div>
         </div>
 
         <div class="form-card">
@@ -83,23 +63,10 @@
                     <input id="file" type="file" name="file" accept=".xlsx,.docx" required>
                 </div>
 
-                <div class="field">
-                    <label for="course">Kurs</label>
-                    <select id="course" name="course" required>
-                        <option value="">Kursni tanlang</option>
-                        <option value="3">3-kurs</option>
-                        <option value="4">4-kurs</option>
-                    </select>
-                </div>
-
-                <div class="field">
-                    <label for="start_date">Boshlanish sanasi</label>
-                    <input id="start_date" type="date" name="start_date" required>
-                </div>
-
                 <div class="field full">
-                    <label for="end_date">Tugash sanasi</label>
-                    <input id="end_date" type="date" name="end_date" required>
+                    <div class="notice">
+                        XLSX yuklasangiz kurs va sanalar Excel ichidan olinadi. DOCX yuklashda esa oxirgi saqlangan qiymatlar ishlatiladi.
+                    </div>
                 </div>
 
                 <div class="field full">
@@ -108,10 +75,17 @@
             </form>
 
             {% if uploaded %}
-                <div class="alert-success">Ma'lumotlar muvaffaqiyatli yuklandi.</div>
+                <div class="alert-success">Ma'lumotlar muvaffaqiyatli yuklandi. ZIP fayl avtomatik yuklanadi.</div>
                 <div class="hero-actions">
                     <a href="{% url 'export_all_documents_zip' %}" class="btn">Hujjatlarni ZIP holatda yuklab olish</a>
                 </div>
+                <script>
+                    window.addEventListener("DOMContentLoaded", () => {
+                        setTimeout(() => {
+                            window.location.href = "{% url 'export_all_documents_zip' %}";
+                        }, 600);
+                    });
+                </script>
             {% endif %}
 
             {% if error %}

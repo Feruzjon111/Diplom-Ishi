@@ -4,22 +4,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}AmaliyotDocx{% endblock %}</title>
+    <title>{% block title %}e-Praktika{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <script src="{% static 'js/i18n.js' %}" defer></script>
     <script src="{% static 'js/script.js' %}" defer></script>
 </head>
 <body>
     <header>
         <nav class="navbar">
             <div class="navbar-left brand-row">
-                <a href="/" class="logo">AmaliyotDocx</a>
+                <a href="/" class="logo">e-Praktika</a>
                 {% if user.is_authenticated %}
                 <div class="nav-links">
                     <a href="/">Bosh sahifa</a>
-                    <a href="{% url 'dashboard' %}">Dashboard</a>
                     <a href="{% url 'upload_excel' %}">Yuklash</a>
                     <a href="{% url 'profile' %}">Profil</a>
-                    <a href="{% url 'pay_view' %}">To‘lov</a>
                     <a href="{% url 'account_settings' %}">Sozlamalar</a>
                 </div>
                 {% endif %}
@@ -27,8 +26,13 @@
 
             {% if user.is_authenticated %}
             <div class="navbar-right">
+                <div class="language-switcher" aria-label="Til tanlash">
+                    <button type="button" class="lang-option" data-lang="uz">UZ</button>
+                    <button type="button" class="lang-option" data-lang="ru">RU</button>
+                    <button type="button" class="lang-option" data-lang="en">EN</button>
+                </div>
                 <span class="user-info">
-                    {{ user.username }} | {{ user.profile.balance|default:0 }} so'm
+                    {{ user.username }}
                 </span>
                 <button type="button" class="theme-toggle" id="themeToggle" aria-label="Rejimni almashtirish">
                     <span class="theme-icon theme-icon-sun" aria-hidden="true">☀</span>
@@ -39,18 +43,21 @@
                     <button type="button" class="dropbtn" id="profileMenuButton" aria-expanded="false">Profil <span class="caret">▾</span></button>
                     <div class="dropdown-content" id="profileMenu">
                         <a href="{% url 'profile' %}">Profil</a>
-                        <a href="{% url 'account_settings' %}">Akkount sozlamalar</a>
-                        <a href="{% url 'pay_view' %}">To‘lovlar</a>
+                        <a href="{% url 'account_settings' %}">Akkount sozlamalari</a>
                         <a href="{% url 'upload_excel' %}">Fayl yuklash</a>
-                        <a href="{% url 'balance' %}">Balansni to‘ldirish</a>
                         <a href="{% url 'logout' %}">Chiqish</a>
                     </div>
                 </div>
             </div>
             {% else %}
                 <div class="navbar-right">
+                    <div class="language-switcher" aria-label="Til tanlash">
+                        <button type="button" class="lang-option" data-lang="uz">UZ</button>
+                        <button type="button" class="lang-option" data-lang="ru">RU</button>
+                        <button type="button" class="lang-option" data-lang="en">EN</button>
+                    </div>
                     <a href="{% url 'login' %}">Kirish</a> |
-                    <a href="{% url 'register' %}">Ro‘yxatdan o‘tish</a>
+                    <a href="{% url 'register' %}">Ro'yxatdan o'tish</a>
                 </div>
             {% endif %}
         </nav>
