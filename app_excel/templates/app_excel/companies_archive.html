@@ -1,0 +1,82 @@
+{% extends "app_excel/base.html" %}
+
+{% block title %}Korxonalar arxivi{% endblock %}
+
+{% block content %}
+<section class="page-shell">
+    <div class="page-hero archive-hero">
+        <div>
+            <span class="eyebrow">Arxiv</span>
+            <h1>Korxonalar</h1>
+            <p class="lead">Talabalar biriktirilgan korxonalar va ularning xaritadagi joylashuvi.</p>
+            <div class="hero-actions">
+                <a class="btn secondary" href="{% url 'dashboard' %}">Dashboard</a>
+                <a class="btn" href="{% url 'students_archive' %}">Talabalarni ko'rish</a>
+            </div>
+        </div>
+        <div class="summary-grid">
+            <div class="metric-card">
+                <span>Korxonalar</span>
+                <strong>{{ enterprise_count }}</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="archive-page-card">
+        <div class="section-title-row">
+            <h2>Korxonalar arxivi{% if enterprise_count %} ({{ enterprise_count }}){% endif %}</h2>
+        </div>
+        {% if company_archive %}
+            <div class="company-location-list">
+                {% for company in company_archive %}
+                    <article class="company-location-card">
+                        <div class="company-location-copy">
+                            <div>
+                                <span class="location-label">Korxona</span>
+                                <h3>{{ company.name }}</h3>
+                            </div>
+                            <div class="company-detail-grid">
+                                <div>
+                                    <span>Talabalar</span>
+                                    <strong>{{ company.student_count }} ta</strong>
+                                </div>
+                                {% if company.director %}
+                                    <div>
+                                        <span>Rahbar</span>
+                                        <strong>{{ company.director }}</strong>
+                                    </div>
+                                {% endif %}
+                                <div>
+                                    <span>Manzil</span>
+                                    <strong>{% if company.address %}{{ company.address }}{% else %}Kiritilmagan{% endif %}</strong>
+                                </div>
+                                {% if company.phone %}
+                                    <div>
+                                        <span>Telefon</span>
+                                        <strong>{{ company.phone }}</strong>
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <div class="company-card-actions">
+                                <a class="mini-action map-open-link" href="https://www.google.com/maps/search/?api=1&query={{ company.map_query }}" target="_blank" rel="noopener">
+                                    Xaritada ochish
+                                </a>
+                            </div>
+                        </div>
+                        <div class="company-location-map">
+                            <iframe
+                                title="{{ company.name }} xaritasi"
+                                src="https://maps.google.com/maps?q={{ company.map_query }}&output=embed"
+                                loading="lazy"
+                                referrerpolicy="no-referrer-when-downgrade">
+                            </iframe>
+                        </div>
+                    </article>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p>Hozircha korxonalar ma'lumotlari yuklanmagan.</p>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

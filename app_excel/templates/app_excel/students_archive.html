@@ -1,0 +1,80 @@
+{% extends "app_excel/base.html" %}
+
+{% block title %}Talabalar arxivi{% endblock %}
+
+{% block content %}
+<section class="page-shell">
+    <div class="page-hero archive-hero">
+        <div>
+            <span class="eyebrow">Arxiv</span>
+            <h1>Talabalar</h1>
+            <p class="lead">Yuklangan talabalar ro'yxatini sahifalab ko'ring.</p>
+            <div class="hero-actions">
+                <a class="btn secondary" href="{% url 'dashboard' %}">Dashboard</a>
+                <a class="btn" href="{% url 'upload_excel' %}">Yangi fayl yuklash</a>
+            </div>
+        </div>
+        <div class="summary-grid">
+            <div class="metric-card">
+                <span>Talabalar</span>
+                <strong>{{ student_count }}</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="archive-page-card student-directory-card" id="students-list">
+        <div class="section-title-row">
+            <h2>Yuklangan talabalar{% if student_count %} ({{ student_count }}){% endif %}</h2>
+            {% if student_page.has_other_pages %}
+                <span class="page-status compact-status">{{ student_page.number }} / {{ student_page.paginator.num_pages }}</span>
+            {% endif %}
+        </div>
+        {% if recent_students %}
+            <div class="student-directory-list">
+                {% for student in recent_students %}
+                    <article class="student-directory-item">
+                        <div class="student-avatar" aria-hidden="true">
+                            {{ forloop.counter }}
+                        </div>
+                        <div class="student-directory-copy">
+                            <span class="location-label">Talaba</span>
+                            <h3>{{ student.full_name }}</h3>
+                            <div class="student-detail-grid">
+                                <div>
+                                    <span>Guruh</span>
+                                    <strong>{{ student.group }}</strong>
+                                </div>
+                                <div>
+                                    <span>Korxona</span>
+                                    <strong>{{ student.company|default:"Kiritilmagan" }}</strong>
+                                </div>
+                                <div>
+                                    <span>Yo'nalish</span>
+                                    <strong>{% if student.direction %}{{ student.direction }}{% else %}{{ student.faculty|default:"Kiritilmagan" }}{% endif %}</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </article>
+                {% endfor %}
+            </div>
+            {% if student_page.has_other_pages %}
+                <div class="student-pagination" aria-label="Talabalar sahifalari">
+                    {% if student_page.has_previous %}
+                        <a class="page-link" href="?students_page={{ student_page.previous_page_number }}#students-list">Oldingi</a>
+                    {% else %}
+                        <span class="page-link disabled">Oldingi</span>
+                    {% endif %}
+                    <span class="page-status">{{ student_page.number }} / {{ student_page.paginator.num_pages }}</span>
+                    {% if student_page.has_next %}
+                        <a class="page-link" href="?students_page={{ student_page.next_page_number }}#students-list">Keyingi</a>
+                    {% else %}
+                        <span class="page-link disabled">Keyingi</span>
+                    {% endif %}
+                </div>
+            {% endif %}
+        {% else %}
+            <p>Hozircha talabalar ma'lumotlari yuklanmagan.</p>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

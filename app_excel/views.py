@@ -12,7 +12,8 @@ from .models import Student, Profile
 import io, os, zipfile
 from django.conf import settings
 from datetime import datetime
-from django.shortcuts import render, redirect
+from urllib.parse import quote_plus
+from django.shortcuts import get_object_or_404, render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.models import User
@@ -97,6 +98,39 @@ REQUIRED_STUDENT_FIELDS = [
     ("faculty_dean", "Fakultet dekani"),
     ("department_head", "Kafedra mudiri"),
 ]
+
+
+DOCUMENT_ARCHIVE_TYPES = [
+    {"key": "shartnoma", "label": "Shartnoma"},
+    {"key": "kundalik", "label": "Kundalik"},
+    {"key": "yollanma", "label": "Yo'llanma"},
+]
+
+
+def build_company_archive(students):
+    companies = {}
+    for student in students:
+        company_name = (student.company or "").strip() or "Nomi kiritilmagan"
+        company = companies.setdefault(
+            company_name,
+            {
+                "name": company_name,
+                "student_count": 0,
+                "director": "",
+                "address": "",
+                "phone": "",
+                "students": [],
+            },
+        )
+        company["student_count"] += 1
+        company["students"].append(student.full_name)
+        company["director"] = company["director"] or student.company_director
+        company["address"] = company["address"] or student.company_address
+        company["phone"] = company["phone"] or student.company_phone
+    for company in companies.values():
+        map_query = f"{company['name']} {company['address']}".strip()
+        company["map_query"] = quote_plus(map_query or company["name"])
+    return sorted(companies.values(), key=lambda company: company["name"].lower())
 
 
 def get_missing_student_fields(student):
@@ -467,11 +501,48 @@ def dashboard_view(request):
         "profile": profile,
         "student_count": students.count(),
         "enterprise_count": students.values("company").distinct().count(),
-        "document_count": students.count() * 3,
+        "document_count": students.count() * len(DOCUMENT_ARCHIVE_TYPES),
         "recent_students": student_page.object_list,
         "student_page": student_page,
     }
     return render(request, "app_excel/dashboard.html", context)
+
+
+@login_required(login_url='login')
+def students_archive_view(request):
+    profile = ensure_profile(request.user)
+    students = Student.objects.all()
+    student_page = Paginator(students.order_by("-id"), 3).get_page(request.GET.get("students_page"))
+    return render(request, "app_excel/students_archive.html", {
+        "profile": profile,
+        "recent_students": student_page.object_list,
+        "student_page": student_page,
+        "student_count": students.count(),
+    })
+
+
+@login_required(login_url='login')
+def companies_archive_view(request):
+    profile = ensure_profile(request.user)
+    students = list(Student.objects.all().order_by("company", "full_name"))
+    company_archive = build_company_archive(students)
+    return render(request, "app_excel/companies_archive.html", {
+        "profile": profile,
+        "company_archive": company_archive,
+        "enterprise_count": len(company_archive),
+    })
+
+
+@login_required(login_url='login')
+def documents_archive_view(request):
+    profile = ensure_profile(request.user)
+    students = Student.objects.all().order_by("full_name")
+    return render(request, "app_excel/documents_archive.html", {
+        "profile": profile,
+        "students_archive": students,
+        "document_types": DOCUMENT_ARCHIVE_TYPES,
+        "document_count": students.count() * len(DOCUMENT_ARCHIVE_TYPES),
+    })
 
 
 
@@ -1436,6 +1507,32 @@ def generate_kundalik_from_fixed_template(student, course, practice_type, start_
 
     normalize_document_formatting(doc)
     return doc
+
+
+@login_required(login_url='login')
+def download_student_document(request, student_id, document_type):
+    student = get_object_or_404(Student, pk=student_id)
+    course = int(request.GET.get("course") or request.session.get("course") or 4)
+    practice_type = request.session.get("practice_type") or get_practice_type(course)
+    start_date_str = request.session.get("start_date", "2025-02-17")
+    end_date_str = request.session.get("end_date", "2025-04-26")
+
+    validation_issues = validate_students_for_documents([student], course, start_date_str, end_date_str)
+    if validation_issues:
+        issues_text = " ; ".join(validation_issues[:10])
+        return HttpResponse(f"Ma'lumotlarni to'ldiring. Hujjat yuklanmadi: {issues_text}", status=400)
+
+    if document_type == "shartnoma":
+        document = generate_shartnoma_document(student, course, practice_type, start_date_str, end_date_str)
+    elif document_type == "kundalik":
+        document = generate_kundalik_document(student, course, practice_type, start_date_str, end_date_str)
+    elif document_type == "yollanma":
+        document = generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str)
+    else:
+        return HttpResponse("Hujjat turi topilmadi.", status=404)
+
+    filename = f"{sanitize_filename(student.full_name)}_{document_type}.docx"
+    return save_document_response(document, filename)
 
 
 

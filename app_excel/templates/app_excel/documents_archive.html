@@ -1,0 +1,52 @@
+{% extends "app_excel/base.html" %}
+
+{% block title %}Hujjatlar arxivi{% endblock %}
+
+{% block content %}
+<section class="page-shell">
+    <div class="page-hero archive-hero">
+        <div>
+            <span class="eyebrow">Arxiv</span>
+            <h1>Hujjatlar</h1>
+            <p class="lead">Har bir talaba uchun shartnoma, kundalik va yo'llanmani alohida yuklab oling.</p>
+            <div class="hero-actions">
+                <a class="btn secondary" href="{% url 'dashboard' %}">Dashboard</a>
+                <a class="btn" href="{% url 'export_all_documents_zip' %}">Hammasini ZIP</a>
+            </div>
+        </div>
+        <div class="summary-grid">
+            <div class="metric-card">
+                <span>Hujjatlar</span>
+                <strong>{{ document_count }}</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="archive-page-card">
+        <div class="section-title-row">
+            <h2>Hujjatlar arxivi{% if document_count %} ({{ document_count }}){% endif %}</h2>
+        </div>
+        {% if students_archive %}
+            <div class="document-archive-list">
+                {% for student in students_archive %}
+                    <article class="document-row">
+                        <div class="archive-copy">
+                            <strong>{{ student.full_name }}</strong>
+                            <span>{{ student.company|default:"Korxona kiritilmagan" }} | {{ student.group }}</span>
+                        </div>
+                        <div class="doc-actions" aria-label="{{ student.full_name }} hujjatlari">
+                            {% for document_type in document_types %}
+                                <a class="mini-action" href="{% url 'download_student_document' student.id document_type.key %}">
+                                    {{ document_type.label }}
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </article>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p>Hozircha hujjatlar arxivi uchun talabalar ma'lumotlari yo'q.</p>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

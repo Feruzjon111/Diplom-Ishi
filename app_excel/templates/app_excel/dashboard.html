@@ -9,35 +9,37 @@
             <p class="eyebrow">Boshqaruv paneli</p>
             <h1>Amaliyot hujjatlarini bitta joydan boshqaring</h1>
             <p class="lead">
-                Talabalarni yuklang, hujjatlarni tayyorlang va profilingiz orqali barcha bo‘limlarga o‘ting.
+                Talabalar, korxonalar va hujjatlar arxivini alohida sahifalarda ko'ring.
             </p>
             <div class="hero-actions">
                 <a class="btn secondary" href="/">Bosh sahifa</a>
-                <a class="btn" href="{% url 'upload_excel' %}">Yuklash bo‘limi</a>
-                <a class="btn secondary" href="{% url 'profile' %}">Profilni ko‘rish</a>
+                <a class="btn" href="{% url 'upload_excel' %}">Yuklash bo'limi</a>
+                <a class="btn secondary" href="{% url 'profile' %}">Profilni ko'rish</a>
             </div>
         </div>
         <div class="stats-grid">
-            <div class="stat-card">
+            <a class="stat-card stat-link" href="{% url 'students_archive' %}">
                 <span>Talabalar</span>
                 <strong>{{ student_count }}</strong>
-            </div>
-            <div class="stat-card">
+            </a>
+            <a class="stat-card stat-link" href="{% url 'companies_archive' %}">
                 <span>Korxonalar</span>
                 <strong>{{ enterprise_count }}</strong>
-            </div>
-            <div class="stat-card">
+            </a>
+            <a class="stat-card stat-link" href="{% url 'documents_archive' %}">
                 <span>Hujjatlar</span>
                 <strong>{{ document_count }}</strong>
-            </div>
+            </a>
         </div>
     </div>
 
     <div class="section-grid">
         <div class="section-card">
-            <h2>Asosiy bo‘limlar</h2>
+            <h2>Asosiy bo'limlar</h2>
             <div class="quick-links">
-                <a href="/">Bosh sahifa</a>
+                <a href="{% url 'students_archive' %}">Talabalar arxivi</a>
+                <a href="{% url 'companies_archive' %}">Korxonalar arxivi</a>
+                <a href="{% url 'documents_archive' %}">Hujjatlar arxivi</a>
                 <a href="{% url 'upload_excel' %}">Excel yoki Word yuklash</a>
                 <a href="{% url 'export_all_documents_zip' %}">ZIP yuklab olish</a>
                 <a href="{% url 'account_settings' %}">Sozlamalar</a>

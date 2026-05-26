@@ -10,6 +10,9 @@ router.register('students', StudentViewSet, basename='student')
 
 urlpatterns = [
     path('', views.dashboard_view, name='dashboard'),
+    path('students/', views.students_archive_view, name='students_archive'),
+    path('companies/', views.companies_archive_view, name='companies_archive'),
+    path('documents/', views.documents_archive_view, name='documents_archive'),
     path('api/', include(router.urls)),
     path('api/token/', obtain_auth_token, name='api_token_auth'),
 
@@ -19,6 +22,7 @@ urlpatterns = [
     path('export/', views.export_all_documents_zip, name='export_all_documents_zip'),
     path('generate/<str:company_name>/', views.generate_contract_for_company, name='generate_contract_for_company'),
     path('export/one/', views.export_to_word, name='export_to_word'),
+    path('documents/<int:student_id>/<str:document_type>/', views.download_student_document, name='download_student_document'),
 
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
