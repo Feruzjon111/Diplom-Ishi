@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+from urllib.parse import parse_qs, unquote, urlparse
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -99,11 +100,50 @@ WSGI_APPLICATION = 'amaliyotdocx.wsgi.application'
 DEFAULT_SQLITE_PATH = os.path.join(os.getenv("TEMP", str(BASE_DIR)), "amaliyotdocx.sqlite3")
 SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", DEFAULT_SQLITE_PATH)
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': SQLITE_DB_PATH,
+
+def build_database_config():
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if database_url:
+        parsed_url = urlparse(database_url)
+        if parsed_url.scheme not in {"postgres", "postgresql"}:
+            raise ValueError("DATABASE_URL faqat postgres/postgresql sxemasi bilan ishlashi kerak.")
+
+        query_options = {
+            key: values[-1]
+            for key, values in parse_qs(parsed_url.query).items()
+            if values
+        }
+        config = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": unquote(parsed_url.path.lstrip("/")),
+            "USER": unquote(parsed_url.username or ""),
+            "PASSWORD": unquote(parsed_url.password or ""),
+            "HOST": parsed_url.hostname or "",
+            "PORT": str(parsed_url.port or ""),
+        }
+        if query_options:
+            config["OPTIONS"] = query_options
+        return config
+
+    db_engine = os.getenv("DB_ENGINE", "sqlite").lower()
+    if db_engine in {"postgres", "postgresql"}:
+        return {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("POSTGRES_DB", "amaliyotdocx"),
+            "USER": os.getenv("POSTGRES_USER", "postgres"),
+            "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
+            "HOST": os.getenv("POSTGRES_HOST", "127.0.0.1"),
+            "PORT": os.getenv("POSTGRES_PORT", "5432"),
+        }
+
+    return {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": SQLITE_DB_PATH,
     }
+
+
+DATABASES = {
+    "default": build_database_config()
 }
 
 
@@ -175,6 +215,10 @@ CSRF_FAILURE_VIEW = 'app_excel.views.csrf_failure'
 
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 365  # 1 yil eslab qolish
+
+
+SUPPORT_TELEGRAM = os.getenv("SUPPORT_TELEGRAM", "@Feruzjon_12_12").strip()
+SUPPORT_PHONE = os.getenv("SUPPORT_PHONE", "+998956561212").strip()
 
 
 JAZZMIN_SETTINGS = {

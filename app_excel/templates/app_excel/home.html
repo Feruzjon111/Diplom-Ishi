@@ -436,9 +436,12 @@
                     <a class="btn btn-primary" href="/excel/register/">Ro'yxatdan o'tish</a>
                 </div>
                 <div class="language-switcher" aria-label="Til tanlash">
-                    <button type="button" class="lang-option" data-lang="uz">UZ</button>
-                    <button type="button" class="lang-option" data-lang="ru">RU</button>
-                    <button type="button" class="lang-option" data-lang="en">EN</button>
+                    <button type="button" class="lang-current" aria-haspopup="true" aria-expanded="false" title="Til tanlash">UZ</button>
+                    <div class="lang-menu" role="menu">
+                        <button type="button" class="lang-option" data-lang="uz" role="menuitem">UZ</button>
+                        <button type="button" class="lang-option" data-lang="ru" role="menuitem">RU</button>
+                        <button type="button" class="lang-option" data-lang="en" role="menuitem">EN</button>
+                    </div>
                 </div>
                 <button type="button" class="theme-toggle" id="themeToggle" aria-label="Rejimni almashtirish" title="Kunduzgi/tungi rejim">
                     <span class="theme-icon theme-icon-sun" aria-hidden="true">☀</span>
@@ -482,7 +485,7 @@
             <article class="step">
                 <span>2</span>
                 <h3>Talabalarni yuklash</h3>
-                <p>Excel yoki Word fayldan talabalar ro‘yxati tizimga import qilinadi.</p>
+                <p>Namuna Excel faylidan talabalar ro‘yxati tizimga import qilinadi.</p>
             </article>
             <article class="step">
                 <span>3</span>
@@ -566,6 +569,6 @@
             }
         });
     </script>
-    <script src="/static/js/i18n.js" defer></script>
+    <script src="/static/js/i18n.js?v=20260531-lang-contrast" defer></script>
 </body>
 </html>

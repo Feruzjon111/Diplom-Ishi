@@ -6,7 +6,7 @@
             <span class="eyebrow">Import markazi</span>
             <h1>Talabalar ma'lumotlarini yuklash</h1>
             <p class="lead">
-                Excel yoki Word fayldagi ro'yxatni tizimga yuklang. Excel namuna ichida kurs, boshlanish sanasi va tugash sanasi ham bo'ladi, keyin hujjatlar yaratish va ZIP eksport qilish mumkin bo'ladi.
+                Namuna Excel faylini to'ldirib tizimga yuklang. Kurs, amaliyot turi va sanalar ham shu fayldan olinadi.
             </p>
             <div class="hero-actions">
                 <a class="btn" href="{% url 'dashboard' %}">Dashboard</a>
@@ -23,7 +23,7 @@
             </div>
             <div class="metric-card">
                 <span>Formatlar</span>
-                <strong>XLSX / DOCX</strong>
+                <strong>XLSX</strong>
             </div>
         </div>
     </div>
@@ -35,7 +35,8 @@
                 <div class="card-link">1. Talabalar faylini tanlang</div>
                 <div class="card-link">2. Excel ichidagi barcha ustunlarni to'ldiring</div>
                 <div class="card-link">3. Ma'lumotlarni tizimga yuboring</div>
-                <div class="card-link">4. Keyingi bosqichda hujjatlarni yuklab oling</div>
+                <div class="card-link">4. Yangi talabalar mavjud ro'yxatga qo'shiladi</div>
+                <div class="card-link">5. Keyingi bosqichda hujjatlarni yuklab oling</div>
             </div>
             <div class="hero-actions" style="margin-top:18px;">
                 <a class="btn secondary" href="{% url 'download_sample_excel' %}">Namuna Excel yuklab olish</a>
@@ -59,13 +60,13 @@
             <form method="post" enctype="multipart/form-data" class="form-grid" style="margin-top:18px;">
                 {% csrf_token %}
                 <div class="field full">
-                    <label for="file">Talabalar fayli (.xlsx yoki .docx)</label>
-                    <input id="file" type="file" name="file" accept=".xlsx,.docx" required>
+                    <label for="file">Talabalar fayli (.xlsx)</label>
+                    <input id="file" type="file" name="file" accept=".xlsx" required>
                 </div>
 
                 <div class="field full">
                     <div class="notice">
-                        XLSX yuklasangiz kurs va sanalar Excel ichidan olinadi. DOCX yuklashda esa oxirgi saqlangan qiymatlar ishlatiladi.
+                        Excel ustunlari namuna faylidagi tartib va nomlarga mos bo'lishi kerak. Oldingi talabalar o'chirilmaydi.
                     </div>
                 </div>
 
@@ -75,7 +76,15 @@
             </form>
 
             {% if uploaded %}
-                <div class="alert-success">Ma'lumotlar muvaffaqiyatli yuklandi. ZIP fayl avtomatik yuklanadi.</div>
+                <div class="alert-success">
+                    Ma'lumotlar muvaffaqiyatli yuklandi.
+                    Qo'shildi: {{ upload_added_count }} ta.
+                    Yangilandi: {{ upload_updated_count }} ta.
+                    {% if upload_skipped_duplicates %}
+                        Fayl ichidagi takrorlar o'tkazildi: {{ upload_skipped_duplicates }} ta.
+                    {% endif %}
+                    ZIP fayl avtomatik yuklanadi.
+                </div>
                 <div class="hero-actions">
                     <a href="{% url 'export_all_documents_zip' %}" class="btn">Hujjatlarni ZIP holatda yuklab olish</a>
                 </div>

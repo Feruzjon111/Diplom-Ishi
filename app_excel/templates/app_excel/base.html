@@ -5,9 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}e-Praktika{% endblock %}</title>
-    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=20260525-students">
-    <script src="{% static 'js/i18n.js' %}" defer></script>
-    <script src="{% static 'js/script.js' %}" defer></script>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=20260531-lang-menu">
+    <script src="{% static 'js/i18n.js' %}?v=20260531-lang-contrast" defer></script>
+    <script src="{% static 'js/script.js' %}?v=20260530-chat-copy" defer></script>
 </head>
 <body>
     <header>
@@ -27,9 +27,12 @@
             {% if user.is_authenticated %}
             <div class="navbar-right">
                 <div class="language-switcher" aria-label="Til tanlash">
-                    <button type="button" class="lang-option" data-lang="uz">UZ</button>
-                    <button type="button" class="lang-option" data-lang="ru">RU</button>
-                    <button type="button" class="lang-option" data-lang="en">EN</button>
+                    <button type="button" class="lang-current" aria-haspopup="true" aria-expanded="false" title="Til tanlash">UZ</button>
+                    <div class="lang-menu" role="menu">
+                        <button type="button" class="lang-option" data-lang="uz" role="menuitem">UZ</button>
+                        <button type="button" class="lang-option" data-lang="ru" role="menuitem">RU</button>
+                        <button type="button" class="lang-option" data-lang="en" role="menuitem">EN</button>
+                    </div>
                 </div>
                 <span class="user-info">
                     {{ user.username }}
@@ -52,9 +55,12 @@
             {% else %}
                 <div class="navbar-right">
                     <div class="language-switcher" aria-label="Til tanlash">
-                        <button type="button" class="lang-option" data-lang="uz">UZ</button>
-                        <button type="button" class="lang-option" data-lang="ru">RU</button>
-                        <button type="button" class="lang-option" data-lang="en">EN</button>
+                        <button type="button" class="lang-current" aria-haspopup="true" aria-expanded="false" title="Til tanlash">UZ</button>
+                        <div class="lang-menu" role="menu">
+                            <button type="button" class="lang-option" data-lang="uz" role="menuitem">UZ</button>
+                            <button type="button" class="lang-option" data-lang="ru" role="menuitem">RU</button>
+                            <button type="button" class="lang-option" data-lang="en" role="menuitem">EN</button>
+                        </div>
                     </div>
                     <a href="{% url 'login' %}">Kirish</a> |
                     <a href="{% url 'register' %}">Ro'yxatdan o'tish</a>
@@ -67,5 +73,32 @@
         {% block content %}
         {% endblock %}
     </main>
+
+    {% if user.is_authenticated %}
+    <section class="ai-chat-widget" data-chat-url="{% url 'ai_chat' %}" data-chat-csrf="{{ csrf_token }}" aria-label="Yordamchi">
+        <button type="button" class="ai-chat-toggle" aria-label="Yordamchini ochish" aria-controls="aiChatPanel" aria-expanded="false">
+            <svg class="ai-chat-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7A8.4 8.4 0 0 1 4 11.5 8.5 8.5 0 1 1 21 11.5Z"></path>
+                <path d="M8 10h8M8 14h5"></path>
+            </svg>
+        </button>
+        <div class="ai-chat-panel" id="aiChatPanel" aria-hidden="true">
+            <div class="ai-chat-header">
+                <div>
+                    <strong>Yordamchi</strong>
+                    <span>e-Praktika</span>
+                </div>
+                <button type="button" class="ai-chat-close" aria-label="Yopish">&times;</button>
+            </div>
+            <div class="ai-chat-messages" aria-live="polite">
+                <div class="ai-chat-message bot">Assalomu alaykum! Excel, hujjatlar, talabalar, korxonalar yoki profil bo'yicha savol yozing.</div>
+            </div>
+            <form class="ai-chat-form">
+                <textarea class="ai-chat-input" rows="2" maxlength="1000" placeholder="Savolingizni yozing..." required></textarea>
+                <button type="submit" class="ai-chat-send">Yuborish</button>
+            </form>
+        </div>
+    </section>
+    {% endif %}
 </body>
 </html>

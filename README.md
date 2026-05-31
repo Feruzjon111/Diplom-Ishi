@@ -10,13 +10,13 @@ Loyiha maqsadi Excel orqali talabalar ma’lumotlarini qabul qilish va har bir t
 - `kundalik.docx`
 - `yollanma.docx`
 
-Natijada agar 15 ta talaba bo‘lsa, ZIP ichida 15 ta alohida papka yaratiladi va har bir papka ichida shu talaba uchun 3 ta hujjat bo‘ladi. Agar bir xil korxonada bir nechta talaba amaliyot o‘tayotgan bo‘lsa, shartnomadagi `Talabalar soni` maydoni shu korxona bo‘yicha umumiy sonni ko‘rsatadi.
+Natijada agar 10 ta talaba bo‘lsa, ZIP ichida 10 ta alohida papka yaratiladi va har bir papka ichida shu talaba uchun 3 ta hujjat bo‘ladi. Agar bir xil korxonada bir nechta talaba amaliyot o‘tayotgan bo‘lsa, shartnomadagi `Talabalar soni` maydoni shu korxona bo‘yicha umumiy sonni ko‘rsatadi.
 
 ## Asosiy imkoniyatlar
 
-- `.xlsx` yoki `.docx` orqali talabalar ro‘yxatini yuklash
+- `.xlsx` orqali talabalar ro‘yxatini yuklash
 - bepul `Namuna Excel` yuklab olish
-- namuna Excel ichida 15 ta default talaba ma’lumoti bilan tayyor jadval
+- namuna Excel ichida 10 ta default talaba ma’lumoti bilan tayyor jadval
 - 3-kurs uchun `Ishlab chiqarish amaliyoti`
 - 4-kurs uchun `Bitiruv oldi amaliyoti`
 - har bir talaba uchun alohida hujjat generatsiyasi
@@ -30,6 +30,7 @@ Natijada agar 15 ta talaba bo‘lsa, ZIP ichida 15 ta alohida papka yaratiladi v
 - `Python 3.12+`
 - `Django 5.x`
 - `Django REST Framework`
+- `PostgreSQL`
 - `python-docx`
 - `openpyxl`
 - `HTML`, `CSS`, `JavaScript`
@@ -64,7 +65,7 @@ Hujjatlar/
 - `/excel/login/` - kirish
 - `/excel/register/` - ro‘yxatdan o‘tish
 - `/excel/` - dashboard
-- `/excel/upload/` - Excel yoki Word yuklash
+- `/excel/upload/` - Excel yuklash
 - `/excel/profile/` - profil
 - `/excel/settings/` - akkaunt sozlamalari
 - `/admin/` - admin panel
@@ -96,6 +97,41 @@ $env:SQLITE_DB_PATH = Join-Path $env:TEMP 'amaliyotdocx.sqlite3'
 python manage.py runserver
 ```
 
+PostgreSQL bilan ishga tushirish:
+
+```powershell
+.\start_postgres.ps1
+```
+
+SQLite ichidagi eski ma'lumotlarni PostgreSQLga bir marta ko'chirish kerak bo'lsa:
+
+```powershell
+.\start_postgres.ps1 -ImportSqliteData
+```
+
+Qo'lda sozlash kerak bo'lsa:
+
+```powershell
+$env:DB_ENGINE = 'postgresql'
+$env:POSTGRES_DB = 'amaliyotdocx'
+$env:POSTGRES_USER = 'postgres'
+$env:POSTGRES_PASSWORD = 'postgres-parolingiz'
+$env:POSTGRES_HOST = '127.0.0.1'
+$env:POSTGRES_PORT = '5432'
+
+& 'C:\Program Files\PostgreSQL\17\bin\createdb.exe' -h 127.0.0.1 -U postgres amaliyotdocx
+python manage.py migrate
+python manage.py create_admin
+python manage.py runserver
+```
+
+Hostingda bitta URL bilan ulash uchun:
+
+```powershell
+$env:DATABASE_URL = 'postgresql://postgres:postgres-parolingiz@127.0.0.1:5432/amaliyotdocx'
+python manage.py migrate
+```
+
 ## API endpointlar
 
 ```http
@@ -110,11 +146,6 @@ Qo‘shimcha API:
 
 ```http
 POST    /excel/api/token/
-GET     /excel/api2/students/
-POST    /excel/api2/students/
-GET     /excel/api2/students/<id>/
-PUT     /excel/api2/students/<id>/
-DELETE  /excel/api2/students/<id>/
 ```
 
 ## Template fayllar
@@ -141,7 +172,7 @@ Asl yuklangan manbalar:
 
 - `Namuna Excel` ichida `Elektron pochta`, `Amaliyot boshlanish sanasi`, `Amaliyot tugash sanasi` ustunlari yo‘q
 - sanalar yuklash formasida alohida tanlanadi
-- hujjatlar `python-docx` orqali to‘ldiriladi
+- hujjatlar `docxtpl` orqali `.docx` namunalarga joylanadi
 
 ## Muallif
 

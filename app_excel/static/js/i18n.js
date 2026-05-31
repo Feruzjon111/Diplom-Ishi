@@ -1,5 +1,10 @@
 (() => {
     const supportedLanguages = ["uz", "ru", "en"];
+    const languageLabels = {
+        uz: "UZ",
+        ru: "RU",
+        en: "EN",
+    };
     const translations = {
         "e-Praktika": {
             ru: "e-Praktika",
@@ -113,9 +118,9 @@
             ru: "Основные разделы",
             en: "Main sections",
         },
-        "Excel yoki Word yuklash": {
-            ru: "Загрузить Excel или Word",
-            en: "Upload Excel or Word",
+        "Excel yuklash": {
+            ru: "Загрузить Excel",
+            en: "Upload Excel",
         },
         "ZIP yuklab olish": {
             ru: "Скачать ZIP",
@@ -145,9 +150,9 @@
             ru: "Загрузка данных студентов",
             en: "Upload student data",
         },
-        "Excel yoki Word fayldagi ro'yxatni tizimga yuklang. Excel namuna ichida kurs, boshlanish sanasi va tugash sanasi ham bo'ladi, keyin hujjatlar yaratish va ZIP eksport qilish mumkin bo'ladi.": {
-            ru: "Загрузите список из Excel или Word в систему. В шаблоне Excel также будут курс, дата начала и дата окончания, после чего можно создавать документы и экспортировать ZIP.",
-            en: "Upload a list from an Excel or Word file. The Excel sample also includes course, start date, and end date, then documents can be generated and exported as ZIP.",
+        "Namuna Excel faylini to'ldirib tizimga yuklang. Kurs, amaliyot turi va sanalar ham shu fayldan olinadi.": {
+            ru: "Заполните пример Excel и загрузите его в систему. Курс, тип практики и даты берутся из этого файла.",
+            en: "Fill in the sample Excel file and upload it. Course, internship type, and dates are taken from that file.",
         },
         "Foydalanuvchi": {
             ru: "Пользователь",
@@ -193,13 +198,13 @@
             ru: "Импорт документов практики",
             en: "Internship document import",
         },
-        "Talabalar fayli (.xlsx yoki .docx)": {
-            ru: "Файл студентов (.xlsx или .docx)",
-            en: "Student file (.xlsx or .docx)",
+        "Talabalar fayli (.xlsx)": {
+            ru: "Файл студентов (.xlsx)",
+            en: "Student file (.xlsx)",
         },
-        "XLSX yuklasangiz kurs va sanalar Excel ichidan olinadi. DOCX yuklashda esa oxirgi saqlangan qiymatlar ishlatiladi.": {
-            ru: "При загрузке XLSX курс и даты берутся из Excel. При загрузке DOCX используются последние сохраненные значения.",
-            en: "When uploading XLSX, the course and dates are taken from Excel. When uploading DOCX, the last saved values are used.",
+        "Excel ustunlari namuna faylidagi tartib va nomlarga mos bo'lishi kerak.": {
+            ru: "Столбцы Excel должны соответствовать названиям и порядку в образце.",
+            en: "Excel columns must match the sample file names and order.",
         },
         "Ma'lumotlarni yuklash": {
             ru: "Загрузить данные",
@@ -607,6 +612,23 @@
             button.classList.toggle("active", active);
             button.setAttribute("aria-pressed", String(active));
         }
+
+        for (const button of document.querySelectorAll(".lang-current")) {
+            button.textContent = languageLabels[language] || "UZ";
+        }
+    }
+
+    function closeLanguageMenus(exceptSwitcher = null) {
+        for (const switcher of document.querySelectorAll(".language-switcher.open")) {
+            if (switcher === exceptSwitcher) {
+                continue;
+            }
+            switcher.classList.remove("open");
+            const button = switcher.querySelector(".lang-current");
+            if (button) {
+                button.setAttribute("aria-expanded", "false");
+            }
+        }
     }
 
     function ensureLanguageStyles() {
@@ -618,21 +640,101 @@
         style.id = "app-language-styles";
         style.textContent = `
             .language-switcher {
+                --lang-button-bg: #ffffff;
+                --lang-button-text: #10233b;
+                --lang-menu-bg: #ffffff;
+                --lang-menu-text: #10233b;
+                --lang-border: rgba(148, 163, 184, 0.34);
+                --lang-active-bg: #2563eb;
+                --lang-active-text: #ffffff;
+                position: relative;
                 display: inline-flex;
                 align-items: center;
-                gap: 4px;
-                padding: 4px;
-                border: 1px solid var(--line, rgba(148, 163, 184, 0.24));
+                width: 58px;
+                height: 42px;
+                flex: 0 0 auto;
+                overflow: visible;
+            }
+            .lang-current {
+                position: relative;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 58px;
+                height: 42px;
+                border: 1px solid var(--lang-border);
                 border-radius: 999px;
-                background: var(--surface, rgba(255, 255, 255, 0.8));
+                padding: 0 18px 0 12px;
+                color: var(--lang-button-text);
+                background: var(--lang-button-bg);
+                box-shadow: 0 14px 30px rgba(15, 23, 42, 0.12);
+                font: inherit;
+                font-weight: 800;
+                line-height: 1;
+                cursor: pointer;
+                transition: transform 0.2s ease, border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+            }
+            .lang-current::after {
+                content: "";
+                position: absolute;
+                right: 10px;
+                top: 50%;
+                width: 0;
+                height: 0;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 5px solid currentColor;
+                transform: translateY(-35%);
+                opacity: 0.72;
+            }
+            .language-switcher.open .lang-current,
+            .lang-current:hover,
+            .lang-current:focus-visible {
+                border-color: color-mix(in srgb, var(--primary, #2563eb) 46%, transparent);
+                box-shadow: 0 16px 34px rgba(15, 23, 42, 0.16);
+                transform: translateY(-1px);
+            }
+            .language-switcher.open .lang-current::after {
+                transform: translateY(-55%) rotate(180deg);
+            }
+            .lang-menu {
+                position: absolute;
+                top: calc(100% + 8px);
+                right: 0;
+                z-index: 60;
+                display: none;
+                gap: 4px;
+                min-width: 74px;
+                padding: 6px;
+                border: 1px solid var(--lang-border);
+                border-radius: 16px;
+                background: var(--lang-menu-bg);
+                box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+                opacity: 0;
+                pointer-events: none;
+                transform: translateY(-6px) scale(0.98);
+                transform-origin: top right;
+                visibility: hidden;
+                transition: opacity 0.16s ease, transform 0.16s ease, visibility 0.16s ease;
+            }
+            .language-switcher.open .lang-menu {
+                display: grid;
+                opacity: 1;
+                pointer-events: auto;
+                transform: translateY(0) scale(1);
+                visibility: visible;
             }
             .lang-option {
-                min-width: 38px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 100%;
+                min-width: 0;
                 min-height: 34px;
                 border: 0;
-                border-radius: 999px;
+                border-radius: 10px;
                 padding: 7px 10px;
-                color: var(--text, #10233b);
+                color: var(--lang-menu-text);
                 background: transparent;
                 box-shadow: none;
                 font: inherit;
@@ -641,14 +743,34 @@
             }
             .lang-option:hover,
             .lang-option.active {
-                color: #fff;
-                background: linear-gradient(135deg, #2563eb, #7c3aed);
+                color: var(--lang-active-text);
+                background: var(--lang-active-bg);
+            }
+            body.dark-mode .language-switcher {
+                --lang-button-bg: #111827;
+                --lang-button-text: #f8fafc;
+                --lang-menu-bg: #111827;
+                --lang-menu-text: #e5e7eb;
+                --lang-border: rgba(226, 232, 240, 0.22);
+                --lang-active-bg: #2563eb;
+                --lang-active-text: #ffffff;
+            }
+            body.dark-mode .lang-current,
+            body.dark-mode .lang-menu {
+                box-shadow: 0 18px 38px rgba(0, 0, 0, 0.36);
             }
             .auth-language-switcher {
                 position: fixed;
                 top: 22px;
                 right: 82px;
-                z-index: 10;
+                z-index: 20;
+            }
+            @media (max-width: 640px) {
+                .auth-language-switcher {
+                    top: 16px;
+                    right: auto;
+                    left: 16px;
+                }
             }
         `;
         document.head.appendChild(style);
@@ -672,11 +794,32 @@
         setAppLanguage(language);
 
         document.addEventListener("click", (event) => {
-            const button = event.target.closest("[data-lang]");
-            if (!button) {
+            const currentButton = event.target.closest(".lang-current");
+            if (currentButton) {
+                const switcher = currentButton.closest(".language-switcher");
+                const isOpen = !switcher.classList.contains("open");
+                closeLanguageMenus(switcher);
+                switcher.classList.toggle("open", isOpen);
+                currentButton.setAttribute("aria-expanded", String(isOpen));
                 return;
             }
-            setAppLanguage(button.dataset.lang);
+
+            const button = event.target.closest("[data-lang]");
+            if (button) {
+                setAppLanguage(button.dataset.lang);
+                closeLanguageMenus();
+                return;
+            }
+
+            if (!event.target.closest(".language-switcher")) {
+                closeLanguageMenus();
+            }
+        });
+
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") {
+                closeLanguageMenus();
+            }
         });
     });
 })();

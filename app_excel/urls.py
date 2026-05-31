@@ -1,7 +1,7 @@
-from django.urls import path, include
+from django.urls import include, path
 from . import views
 from rest_framework.routers import DefaultRouter
-from .views import StudentViewSet, StudentListCreateAPIView, StudentRetrieveUpdateDestroyAPIView
+from .views import StudentViewSet
 from rest_framework.authtoken.views import obtain_auth_token
 
 
@@ -14,6 +14,7 @@ urlpatterns = [
     path('companies/', views.companies_archive_view, name='companies_archive'),
     path('documents/', views.documents_archive_view, name='documents_archive'),
     path('api/', include(router.urls)),
+    path('api/chat/', views.ai_chat_view, name='ai_chat'),
     path('api/token/', obtain_auth_token, name='api_token_auth'),
 
     path('upload/', views.upload_excel, name='upload_excel'),
@@ -28,23 +29,9 @@ urlpatterns = [
     path('logout/', views.logout_view, name='logout'),
     path('register/', views.register_view, name='register'),
 
-    path('api/', include(router.urls)),
-    path('api2/students/', StudentListCreateAPIView.as_view()),
-    path('api2/students/<int:pk>/', StudentRetrieveUpdateDestroyAPIView.as_view()),
-
     path('profile/', views.profile_view, name='profile'),
     path('settings/', views.account_settings_view, name='account_settings'),
-
-
 ]
-
-
-
-# handler401 = 'app_excel.views.custom_401_view'
-# handler403 = 'app_excel.views.csrf_failure'
-# handler404 = 'app_excel.views.custom_404_view'
-# handler500 = 'app_excel.views.custom_500_view'
-
 
 handler403 = 'app_excel.views.handler403'
 handler404 = 'app_excel.views.handler404'

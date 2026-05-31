@@ -248,16 +248,40 @@
             }
         }
         @media (max-width: 920px) {
-            .shell { grid-template-columns: 1fr; }
-            .side, .form-wrap { padding: 28px 22px; }
+            body {
+                padding: 72px 16px 20px;
+                place-items: start center;
+                overflow-x: hidden;
+            }
+            .shell {
+                width: 100%;
+                min-width: 0;
+                grid-template-columns: minmax(0, 1fr);
+            }
+            .side, .form-wrap {
+                min-width: 0;
+                padding: 28px 22px;
+            }
+            .side p { overflow-wrap: anywhere; }
+            .side-box { overflow-wrap: anywhere; }
+            .theme-toggle {
+                top: 16px;
+                right: auto;
+                left: 84px;
+                width: 42px;
+                height: 42px;
+            }
         }
     </style>
 </head>
 <body>
     <div class="language-switcher auth-language-switcher" aria-label="Til tanlash">
-        <button type="button" class="lang-option" data-lang="uz">UZ</button>
-        <button type="button" class="lang-option" data-lang="ru">RU</button>
-        <button type="button" class="lang-option" data-lang="en">EN</button>
+        <button type="button" class="lang-current" aria-haspopup="true" aria-expanded="false" title="Til tanlash">UZ</button>
+        <div class="lang-menu" role="menu">
+            <button type="button" class="lang-option" data-lang="uz" role="menuitem">UZ</button>
+            <button type="button" class="lang-option" data-lang="ru" role="menuitem">RU</button>
+            <button type="button" class="lang-option" data-lang="en" role="menuitem">EN</button>
+        </div>
     </div>
     <button type="button" class="theme-toggle" id="themeToggle" aria-label="Rejimni almashtirish" title="Kunduzgi/tungi rejim">
         <span class="theme-icon theme-icon-sun" aria-hidden="true">☀</span>
@@ -328,6 +352,6 @@
             }
         });
     </script>
-    <script src="/static/js/i18n.js" defer></script>
+    <script src="/static/js/i18n.js?v=20260531-lang-contrast" defer></script>
 </body>
 </html>

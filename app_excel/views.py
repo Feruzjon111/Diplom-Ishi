@@ -1,31 +1,183 @@
-from docx import Document
-from docxtpl import DocxTemplate
-from docx.enum.table import WD_ALIGN_VERTICAL
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
-from docx.shared import Pt, RGBColor
-import openpyxl
-from django.http import HttpResponse, FileResponse
-from rest_framework.decorators import api_view
-from .models import Student, Profile
-import io, os, zipfile
-from django.conf import settings
+import io
+import json
+import os
+import re
+import zipfile
 from datetime import datetime
 from urllib.parse import quote_plus
-from django.shortcuts import get_object_or_404, render, redirect
-from django.contrib.auth import authenticate, login, logout
-from django.contrib.auth import update_session_auth_hash
-from django.contrib.auth.models import User
+
+import openpyxl
+from docx import Document
+from docxtpl import DocxTemplate
+from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.core.paginator import Paginator
-from .serializers import StudentSerializer
+from django.http import FileResponse, HttpResponse, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_POST
 from rest_framework import viewsets
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.authtoken.models import Token
+
+from .models import Profile, Student
+from .serializers import StudentSerializer
+
+
+UZBEK_MONTHS = [
+    "yanvar",
+    "fevral",
+    "mart",
+    "aprel",
+    "may",
+    "iyun",
+    "iyul",
+    "avgust",
+    "sentabr",
+    "oktabr",
+    "noyabr",
+    "dekabr",
+]
+
+REQUIRED_STUDENT_FIELDS = [
+    ("full_name", "Talabaning F.I.Sh."),
+    ("faculty", "Fakultet"),
+    ("direction", "Yo'nalish"),
+    ("group", "Guruh"),
+    ("company", "Korxona nomi"),
+    ("company_address", "Korxona manzili"),
+    ("company_director", "Korxona rahbari F.I.Sh."),
+    ("company_phone", "Korxona telefoni"),
+    ("practice_supervisor", "Universitet amaliyot rahbari"),
+    ("faculty_dean", "Fakultet dekani"),
+    ("department_head", "Kafedra mudiri"),
+]
+
+DOCUMENT_ARCHIVE_TYPES = [
+    {"key": "shartnoma", "label": "Shartnoma"},
+    {"key": "kundalik", "label": "Kundalik"},
+    {"key": "yollanma", "label": "Yo'llanma"},
+]
+
+STUDENT_IMPORT_UPDATE_FIELDS = [
+    "full_name",
+    "direction",
+    "faculty",
+    "group",
+    "company",
+    "company_address",
+    "company_director",
+    "company_phone",
+    "practice_supervisor",
+    "faculty_dean",
+    "department_head",
+]
+
+DEFAULT_CHAT_RESPONSES = [
+    (
+        ("salom", "assalom", "hello", "hi"),
+        "Assalomu alaykum! Men e-Praktika yordamchisiman. Excel yuklash, hujjatlar, talabalar ro'yxati, korxonalar arxivi yoki profil sozlamalari bo'yicha yordam beraman.",
+    ),
+    (
+        ("excel", "yuklash", "upload", "fayl"),
+        "Excel fayl yuklash tartibi:\n1. /excel/upload/ sahifasiga o'ting.\n2. Namuna Excel faylini yuklab oling.\n3. Talabalar ma'lumotlarini shu ustunlar bo'yicha to'ldiring.\n4. Faylni .xlsx formatda yuklang.\n\nYangi talabalar mavjud ro'yxatga qo'shiladi. Oldingi talabalar o'chib ketmaydi.",
+    ),
+    (
+        ("namuna", "shablon", "sample"),
+        "Namuna Excel kerak bo'lsa, /excel/upload/ sahifasidagi Namuna Excel tugmasini bosing. Fayl ichida kerakli ustunlar va to'ldirish namunasi bor.",
+    ),
+    (
+        ("hujjat", "shartnoma", "kundalik", "yollanma", "zip", "word", "docx"),
+        "Hujjat olish tartibi:\n1. Avval Excel ro'yxatini yuklang.\n2. /excel/documents/ sahifasiga o'ting.\n3. Talaba bo'yicha shartnoma, kundalik yoki yo'llanmani yuklab oling.\n4. Kerak bo'lsa barcha hujjatlarni ZIP qilib oling.",
+    ),
+    (
+        ("talaba", "student", "royxat", "ro'yxat"),
+        "Talabalar ro'yxati /excel/students/ sahifasida ko'rinadi. Yangi Excel yuklanganda talabalar mavjud ro'yxatga qo'shiladi, oldingi ma'lumotlar saqlanadi.",
+    ),
+    (
+        ("korxona", "kompaniya", "company", "tashkilot"),
+        "Korxonalar arxivi /excel/companies/ sahifasida. Bu yerda korxona nomi, manzili, telefoni va biriktirilgan talabalar ko'rinadi.",
+    ),
+    (
+        ("profil", "akkaunt", "sozlama", "parol", "password"),
+        "Profil ma'lumotlari uchun /excel/profile/ sahifasiga o'ting. Parol yoki akkaunt sozlamalarini o'zgartirish uchun /excel/settings/ sahifasidan foydalaning.",
+    ),
+    (
+        ("login", "kirish", "register", "royxatdan", "ro'yxatdan"),
+        "Tizimga kirish uchun /excel/login/ sahifasidan foydalaning. Yangi akkaunt ochish uchun /excel/register/ sahifasiga o'ting.",
+    ),
+    (
+        ("admin", "operator"),
+        "Admin panel /admin/ manzilida. Default foydalanuvchilar yaratilgan bo'lsa, admin yoki operator akkaunti orqali kirish mumkin.",
+    ),
+    (
+        ("xato", "error", "ishlamayapti", "muammo"),
+        "Agar xatolik chiqsa:\n1. Sahifani yangilang.\n2. Excel fayl .xlsx formatda ekanini tekshiring.\n3. Majburiy ustunlar to'ldirilganini tekshiring.\n4. Muammo davom etsa, quyidagi kontaktlar orqali murojaat qiling.",
+    ),
+]
+
+DEFAULT_CHAT_FALLBACK = """
+Savolingizni to'liq tushunmadim. Quyidagilardan birini yozib ko'ring:
+
+- Excel qanday yuklanadi?
+- Hujjatlarni qayerdan olaman?
+- Talabalar ro'yxati qayerda?
+- Korxonalar arxivi qayerda?
+- Profil yoki parol qanday o'zgartiriladi?
+""".strip()
+
+
+def clean_chat_text(value, max_length=1200):
+    return " ".join(str(value or "").strip().split())[:max_length]
+
+
+def format_support_phone(phone):
+    digits = "".join(char for char in phone if char.isdigit())
+    if len(digits) == 9:
+        digits = f"998{digits}"
+
+    if len(digits) == 12 and digits.startswith("998"):
+        return f"+998 {digits[3:5]} {digits[5:8]} {digits[8:10]} {digits[10:12]}"
+
+    return phone.strip()
+
+
+def get_support_contact_note():
+    contacts = []
+    telegram = getattr(settings, "SUPPORT_TELEGRAM", "").strip()
+    if telegram:
+        if telegram.startswith("@"):
+            telegram = f"{telegram} (https://t.me/{telegram[1:]})"
+        contacts.append(f"Telegram: {telegram}")
+
+    phone = format_support_phone(getattr(settings, "SUPPORT_PHONE", "").strip())
+    if phone:
+        contacts.append(f"Telefon: {phone}")
+
+    if contacts:
+        return "Qo'shimcha savol yoki tushunmovchilik bo'lsa, murojaat qiling:\n" + "\n".join(contacts)
+
+    return "Qo'shimcha savol yoki tushunmovchilik bo'lsa, administratorga Telegram orqali murojaat qiling."
+
+
+def add_support_note(reply):
+    return f"{reply}\n\n{get_support_contact_note()}"
+
+
+def message_has_keyword(message, keyword):
+    if len(keyword) <= 3:
+        return re.search(rf"(^|[^a-z0-9_]){re.escape(keyword)}([^a-z0-9_]|$)", message) is not None
+    return keyword in message
+
+
+def get_default_chat_reply(message):
+    normalized_message = message.lower()
+    for keywords, reply in DEFAULT_CHAT_RESPONSES:
+        if any(message_has_keyword(normalized_message, keyword) for keyword in keywords):
+            if any(message_has_keyword(normalized_message, keyword) for keyword in ("xato", "error", "ishlamayapti", "muammo")):
+                return add_support_note(reply)
+            return reply
+    return add_support_note(DEFAULT_CHAT_FALLBACK)
 
 
 def ensure_profile(user):
@@ -51,7 +203,7 @@ def get_template_sources():
         },
         {
             "key": "yollanma",
-            "label": "Yo‘llanma",
+            "label": "Yo'llanma",
             "filename": "Bitiruv oldi Yo'llanma.doc",
             "kind": "DOC manba",
             "exists": os.path.exists(os.path.join(source_dir, "Bitiruv oldi Yo'llanma.doc")),
@@ -68,43 +220,36 @@ def get_runtime_template_paths():
     }
 
 
-def validate_runtime_templates():
-    missing = [
-        name for name, path in get_runtime_template_paths().items()
-        if not os.path.exists(path)
-    ]
-    return missing
-
-
 def get_available_runtime_template_path(template_key):
     path = get_runtime_template_paths()[template_key]
     return path if os.path.exists(path) else None
+
+
+def get_template_variables(template_key):
+    template_path = get_available_runtime_template_path(template_key)
+    if not template_path:
+        return set()
+    template = DocxTemplate(template_path)
+    return template.get_undeclared_template_variables()
+
+
+def validate_runtime_templates():
+    issues = []
+    for template_key, template_path in get_runtime_template_paths().items():
+        if not os.path.exists(template_path):
+            issues.append(f"{template_key} topilmadi")
+            continue
+        if not get_template_variables(template_key):
+            issues.append(f"{template_key} ichida {{ }} maydonlari yo'q")
+    return issues
 
 
 def get_practice_type(course):
     return "Ishlab chiqarish amaliyoti" if int(course) == 3 else "Bitiruv oldi amaliyoti"
 
 
-REQUIRED_STUDENT_FIELDS = [
-    ("full_name", "Talabaning F.I.Sh."),
-    ("faculty", "Fakultet"),
-    ("direction", "Yo'nalish"),
-    ("group", "Guruh"),
-    ("company", "Korxona nomi"),
-    ("company_address", "Korxona manzili"),
-    ("company_director", "Korxona rahbari F.I.Sh."),
-    ("company_phone", "Korxona telefoni"),
-    ("practice_supervisor", "Universitet amaliyot rahbari"),
-    ("faculty_dean", "Fakultet dekani"),
-    ("department_head", "Kafedra mudiri"),
-]
-
-
-DOCUMENT_ARCHIVE_TYPES = [
-    {"key": "shartnoma", "label": "Shartnoma"},
-    {"key": "kundalik", "label": "Kundalik"},
-    {"key": "yollanma", "label": "Yo'llanma"},
-]
+def get_company_student_count(company_name):
+    return Student.objects.filter(company=company_name).count()
 
 
 def build_company_archive(students):
@@ -127,6 +272,7 @@ def build_company_archive(students):
         company["director"] = company["director"] or student.company_director
         company["address"] = company["address"] or student.company_address
         company["phone"] = company["phone"] or student.company_phone
+
     for company in companies.values():
         map_query = f"{company['name']} {company['address']}".strip()
         company["map_query"] = quote_plus(map_query or company["name"])
@@ -136,10 +282,65 @@ def build_company_archive(students):
 def get_missing_student_fields(student):
     missing = []
     for field_name, label in REQUIRED_STUDENT_FIELDS:
-        value = getattr(student, field_name, "")
-        if not str(value or "").strip():
+        if not str(getattr(student, field_name, "") or "").strip():
             missing.append(label)
     return missing
+
+
+def normalize_student_identity_value(value):
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def get_student_import_key(student):
+    return (
+        normalize_student_identity_value(student.full_name),
+        normalize_student_identity_value(student.group),
+        normalize_student_identity_value(student.company),
+    )
+
+
+def copy_student_import_fields(target, source):
+    changed = False
+    for field_name in STUDENT_IMPORT_UPDATE_FIELDS:
+        source_value = getattr(source, field_name)
+        if getattr(target, field_name) != source_value:
+            setattr(target, field_name, source_value)
+            changed = True
+    return changed
+
+
+def upsert_imported_students(students):
+    existing_by_key = {}
+    for student in Student.objects.all().order_by("id"):
+        key = get_student_import_key(student)
+        if key not in existing_by_key:
+            existing_by_key[key] = student
+
+    incoming_by_key = {}
+    for student in students:
+        incoming_by_key[get_student_import_key(student)] = student
+
+    students_to_create = []
+    updated_count = 0
+    for key, student in incoming_by_key.items():
+        existing_student = existing_by_key.get(key)
+        if existing_student is None:
+            students_to_create.append(student)
+            continue
+
+        changed = copy_student_import_fields(existing_student, student)
+        if changed:
+            existing_student.save(update_fields=STUDENT_IMPORT_UPDATE_FIELDS)
+        updated_count += 1
+
+    if students_to_create:
+        Student.objects.bulk_create(students_to_create)
+
+    return {
+        "added": len(students_to_create),
+        "updated": updated_count,
+        "skipped_duplicates": len(students) - len(incoming_by_key),
+    }
 
 
 def validate_students_for_documents(students, course, start_date_str, end_date_str):
@@ -183,6 +384,7 @@ def normalize_excel_date(value):
             return value.strftime("%Y-%m-%d")
         except Exception:
             pass
+
     raw = str(value).strip()
     for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d-%m-%Y", "%Y/%m/%d"):
         try:
@@ -192,27 +394,99 @@ def normalize_excel_date(value):
     return raw
 
 
-def get_company_student_count(company_name):
-    return Student.objects.filter(company=company_name).count()
-
-
-def build_student_context(student, course, practice_type, start_date, end_date):
+def parse_date_parts(date_str):
+    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
     return {
-        'FULL_NAME': student.full_name,
-        'DIRECTION': student.direction or student.faculty,
-        'GROUP': student.group,
-        'COMPANY': student.company,
-        'ADDRESS': student.company_address,
-        'DIRECTOR': student.company_director,
-        'PHONE': student.company_phone,
-        'SUPERVISOR': student.practice_supervisor,
-        'FACULTY': student.faculty,
-        'COURSE': course,
-        'PRACTICE_TYPE': practice_type,
-        'STUDENT_COUNT': get_company_student_count(student.company),
-        'START_DATE': start_date,
-        'END_DATE': end_date,
+        "day": f"{date_obj.day:02}",
+        "day_int": str(date_obj.day),
+        "month": UZBEK_MONTHS[date_obj.month - 1],
+        "year": str(date_obj.year),
+        "short": date_obj.strftime("%d.%m.%Y"),
     }
+
+
+def format_document_date(date_str):
+    parts = parse_date_parts(date_str)
+    return f"{parts['year']}-yil {parts['day_int']}-{parts['month']}"
+
+
+def build_common_template_context(student, course, practice_type, start_date_str, end_date_str):
+    start_parts = parse_date_parts(start_date_str)
+    end_parts = parse_date_parts(end_date_str)
+    direction_label = student.direction or student.faculty
+    company_student_count = get_company_student_count(student.company)
+    academic_year = f"{start_parts['year']}/{int(start_parts['year']) + 1}"
+    practice_duration_rule = (
+        "Amaliyot muddati 3-bosqichda o'quv reja asosida belgilanadi."
+        if int(course) == 3
+        else "Amaliyot muddati 4-bosqichda 10-hafta, haftasiga 3 ish kuni, kuniga 6 soat, jami 180 soat etib belgilanadi."
+    )
+
+    context = {
+        "FULL_NAME": student.full_name,
+        "DIRECTION": direction_label,
+        "FACULTY": student.faculty,
+        "COURSE": str(course),
+        "PRACTICE_TYPE": practice_type,
+        "PRACTICE_TYPE_LOWER": practice_type.lower(),
+        "PRACTICE_TYPE_UPPER": practice_type.upper(),
+        "PRACTICE_DURATION_RULE": practice_duration_rule,
+        "COMPANY": student.company,
+        "ADDRESS": student.company_address,
+        "DIRECTOR": student.company_director,
+        "PHONE": student.company_phone,
+        "SUPERVISOR": student.practice_supervisor,
+        "FACULTY_DEAN": student.faculty_dean,
+        "DEPARTMENT_HEAD": student.department_head,
+        "COMPANY_STUDENT_COUNT": str(company_student_count),
+        "ACADEMIC_YEAR": academic_year,
+        "START_DAY": start_parts["day"],
+        "START_MONTH": start_parts["month"],
+        "START_YEAR": start_parts["year"],
+        "START_DATE_SHORT": start_parts["short"],
+        "START_DATE_TEXT": format_document_date(start_date_str),
+        "END_DAY": end_parts["day"],
+        "END_MONTH": end_parts["month"],
+        "END_YEAR": end_parts["year"],
+        "END_DATE_SHORT": end_parts["short"],
+        "END_DATE_TEXT": format_document_date(end_date_str),
+        "POSITION": "Amaliyotchi",
+        "GRADE": "5",
+    }
+    return context
+
+
+def render_docx_template(template_key, context):
+    template_path = get_available_runtime_template_path(template_key)
+    if not template_path:
+        raise FileNotFoundError(f"{template_key} shabloni topilmadi")
+
+    template = DocxTemplate(template_path)
+    if not template.get_undeclared_template_variables():
+        raise ValueError(f"{template_key} shablonida to'ldiriladigan maydonlar yo'q")
+
+    template.render(context)
+    buffer = io.BytesIO()
+    template.save(buffer)
+    buffer.seek(0)
+    return Document(buffer)
+
+
+def generate_document_from_template(template_key, student, course, practice_type, start_date_str, end_date_str):
+    context = build_common_template_context(student, course, practice_type, start_date_str, end_date_str)
+    return render_docx_template(template_key, context)
+
+
+def generate_shartnoma_document(student, course, practice_type, start_date_str, end_date_str):
+    return generate_document_from_template("shartnoma", student, course, practice_type, start_date_str, end_date_str)
+
+
+def generate_kundalik_document(student, course, practice_type, start_date_str, end_date_str):
+    return generate_document_from_template("kundalik", student, course, practice_type, start_date_str, end_date_str)
+
+
+def generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str):
+    return generate_document_from_template("yollanma", student, course, practice_type, start_date_str, end_date_str)
 
 
 def save_document_response(document, filename):
@@ -221,444 +495,122 @@ def save_document_response(document, filename):
     buffer.seek(0)
     response = HttpResponse(
         buffer.read(),
-        content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
 
 
-def parse_date_parts(date_str):
-    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-    oylar = [
-        "yanvar", "fevral", "mart", "aprel", "may", "iyun",
-        "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr"
-    ]
-    return {
-        "day": f"{date_obj.day:02}",
-        "month": oylar[date_obj.month - 1],
-        "year": str(date_obj.year),
-        "short": date_obj.strftime("%d.%m.%Y"),
-    }
+def build_documents_zip(students, course, practice_type, start_date_str, end_date_str):
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as zip_file:
+        for index, student in enumerate(students, start=1):
+            folder = f"Hujjatlar/{index:02}_{sanitize_filename(student.full_name)}"
+            generated_docs = [
+                ("shartnoma", generate_shartnoma_document(student, course, practice_type, start_date_str, end_date_str)),
+                ("kundalik", generate_kundalik_document(student, course, practice_type, start_date_str, end_date_str)),
+                ("yollanma", generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str)),
+            ]
+            for filename, generated_doc in generated_docs:
+                temp_buffer = io.BytesIO()
+                generated_doc.save(temp_buffer)
+                temp_buffer.seek(0)
+                zip_file.writestr(f"{folder}/{filename}.docx", temp_buffer.read())
+
+    zip_buffer.seek(0)
+    return zip_buffer
 
 
-def remove_cell_shading(cell):
-    tc_pr = cell._tc.get_or_add_tcPr()
-    for child in list(tc_pr):
-        if child.tag == qn('w:shd'):
-            tc_pr.remove(child)
-
-
-def clear_run_highlight(paragraph):
-    for run in paragraph.runs:
-        run.font.highlight_color = None
-        run.font.color.rgb = RGBColor(0, 0, 0)
-
-
-def style_cell(cell, horizontal=WD_ALIGN_PARAGRAPH.CENTER, vertical=WD_ALIGN_VERTICAL.CENTER, font_size_pt=None):
-    remove_cell_shading(cell)
-    cell.vertical_alignment = vertical
-    for paragraph in cell.paragraphs:
-        paragraph.alignment = horizontal
-        clear_run_highlight(paragraph)
-        if font_size_pt is not None:
-            for run in paragraph.runs:
-                run.font.size = Pt(font_size_pt)
-
-
-def center_paragraph(paragraph, font_size_pt=None):
-    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    clear_run_highlight(paragraph)
-    if font_size_pt is not None:
-        for run in paragraph.runs:
-            run.font.size = Pt(font_size_pt)
-
-
-def normalize_document_formatting(doc):
-    for paragraph in doc.paragraphs:
-        clear_run_highlight(paragraph)
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                remove_cell_shading(cell)
-                for paragraph in cell.paragraphs:
-                    clear_run_highlight(paragraph)
-
-
-def clear_paragraph_content(paragraph):
-    for run in list(paragraph.runs):
-        paragraph._p.remove(run._element)
-
-
-def add_styled_run(paragraph, text, *, underline=False, italic=False, font_size_pt=None):
-    run = paragraph.add_run(text)
-    run.underline = underline
-    run.italic = italic
-    run.font.color.rgb = RGBColor(0, 0, 0)
-    if font_size_pt is not None:
-        run.font.size = Pt(font_size_pt)
-    return run
-
-
-def set_paragraph_segments(paragraph, segments, *, font_size_pt=None):
-    alignment = paragraph.alignment
-    clear_paragraph_content(paragraph)
-    for segment in segments:
-        if len(segment) == 2:
-            text, underline = segment
-            italic = False
-        else:
-            text, underline, italic = segment
-        add_styled_run(paragraph, text, underline=underline, italic=italic, font_size_pt=font_size_pt)
-    paragraph.alignment = alignment
-
-
-def format_document_date(date_str):
-    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-    oylar = [
-        "yanvar", "fevral", "mart", "aprel", "may", "iyun",
-        "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr"
-    ]
-    return f"{date_obj.year}-yil “{date_obj.day}” {oylar[date_obj.month - 1]}"
-
-
-def build_fallback_document(title, student, course, practice_type, start_date_str, end_date_str):
-    doc = Document()
-    doc.add_heading(title, level=0)
-    doc.add_paragraph(f"Talaba: {student.full_name}")
-    doc.add_paragraph(f"Yo'nalish/Fakultet: {student.direction or student.faculty}")
-    doc.add_paragraph(f"Guruh: {student.group}")
-    doc.add_paragraph(f"Kurs: {course}")
-    doc.add_paragraph(f"Amaliyot turi: {practice_type}")
-    doc.add_paragraph(f"Korxona: {student.company}")
-    doc.add_paragraph(f"Korxona manzili: {student.company_address}")
-    doc.add_paragraph(f"Korxona rahbari: {student.company_director}")
-    doc.add_paragraph(f"Universitet rahbari: {student.practice_supervisor}")
-    doc.add_paragraph(f"Telefon: {student.company_phone}")
-    doc.add_paragraph(f"Boshlanish sanasi: {start_date_str}")
-    doc.add_paragraph(f"Tugash sanasi: {end_date_str}")
-
-    table = doc.add_table(rows=1, cols=2)
-    table.style = "Table Grid"
-    header = table.rows[0].cells
-    header[0].text = "Maydon"
-    header[1].text = "Qiymat"
-    rows = [
-        ("F.I.Sh.", student.full_name),
-        ("Yo'nalish", student.direction or student.faculty),
-        ("Guruh", student.group),
-        ("Korxona", student.company),
-        ("Manzil", student.company_address),
-        ("Rahbar", student.company_director),
-        ("Supervisor", student.practice_supervisor),
-        ("Sana", f"{start_date_str} - {end_date_str}"),
-    ]
-    for key, value in rows:
-        cells = table.add_row().cells
-        cells[0].text = str(key)
-        cells[1].text = str(value)
-
-    return doc
-
-
-def generate_shartnoma_document(student, course, practice_type, start_date_str, end_date_str):
-    template_path = get_available_runtime_template_path("shartnoma")
-    if not template_path:
-        return build_fallback_document("Shartnoma", student, course, practice_type, start_date_str, end_date_str)
-
-    doc = Document(template_path)
-    normalize_document_formatting(doc)
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    company_count = get_company_student_count(student.company)
-
-    doc.paragraphs[0].text = f"TALABALARNING {practice_type.upper()}NI TASHKIL ETISH BO‘YICHA SHARTNOMA"
-    doc.paragraphs[3].text = f"Toshkent sh.                                                                 {start_parts['year']}-yil «{start_parts['day']}» {start_parts['month']}"
-    doc.paragraphs[5].text = (
-        "Biz, quyida imzo chekuvchilar, Muhammad Al-Xorazmiy nomidagi Toshkent axborot texnologiyalari universiteti "
-        f"(keying o‘rinlarda – Universitet)dan tayinlangan shaxs K.Tashev - o‘quv ishlari bo‘yicha prorektori bir tomondan, {student.company}"
-    )
-    doc.paragraphs[7].text = (
-        f"(keying o‘rinlarda – Korxona)dan tayinlangan shaxs {student.company_director}"
-    )
-
-    main_table = doc.tables[0]
-    main_table.rows[2].cells[1].text = student.direction or student.faculty
-    main_table.rows[2].cells[2].text = str(course)
-    main_table.rows[2].cells[3].text = practice_type
-    main_table.rows[2].cells[4].text = str(company_count)
-    main_table.rows[2].cells[5].text = start_parts["short"]
-    main_table.rows[2].cells[6].text = end_parts["short"]
-    style_cell(main_table.rows[2].cells[0], horizontal=WD_ALIGN_PARAGRAPH.CENTER, font_size_pt=11)
-    style_cell(main_table.rows[2].cells[2], horizontal=WD_ALIGN_PARAGRAPH.CENTER, font_size_pt=11)
-    style_cell(main_table.rows[2].cells[3], horizontal=WD_ALIGN_PARAGRAPH.CENTER, font_size_pt=11)
-    style_cell(main_table.rows[2].cells[4], horizontal=WD_ALIGN_PARAGRAPH.CENTER, font_size_pt=11)
-    style_cell(main_table.rows[2].cells[5], horizontal=WD_ALIGN_PARAGRAPH.CENTER, font_size_pt=10)
-    style_cell(main_table.rows[2].cells[6], horizontal=WD_ALIGN_PARAGRAPH.CENTER, font_size_pt=10)
-    main_table.rows[2].cells[1].vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-    for paragraph in main_table.rows[2].cells[1].paragraphs:
-        clear_run_highlight(paragraph)
-
-    info_table = doc.tables[1]
-    company_block = f"Korxona\n{student.company}\n{student.company_address}\nTel.: {student.company_phone}"
-    info_table.rows[0].cells[1].text = company_block
-    info_table.rows[0].cells[2].text = company_block
-    info_table.rows[4].cells[2].text = (
-        "Korxonadan ajratilgan\n"
-        f"amaliyot rahbari ________ {student.company_director}"
-    )
-    style_cell(info_table.rows[0].cells[1], horizontal=WD_ALIGN_PARAGRAPH.CENTER, font_size_pt=10)
-    style_cell(info_table.rows[0].cells[2], horizontal=WD_ALIGN_PARAGRAPH.CENTER, font_size_pt=10)
-    style_cell(info_table.rows[4].cells[2], horizontal=WD_ALIGN_PARAGRAPH.CENTER, font_size_pt=10)
-    return doc
-
-
-def generate_kundalik_document(student, course, practice_type, start_date_str, end_date_str):
-    template_path = get_available_runtime_template_path("kundalik")
-    if not template_path:
-        return build_fallback_document("Kundalik", student, course, practice_type, start_date_str, end_date_str)
-
-    doc = Document(template_path)
-    normalize_document_formatting(doc)
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    academic_year = f"{start_parts['year']}/{int(start_parts['year']) + 1} o‘quv yili"
-
-    doc.paragraphs[5].text = (
-        f"{student.direction or student.faculty} ta’lim yo‘nalishi {course} - bosqich talabasi {student.full_name} ning "
-        f"{academic_year}dagi {practice_type.lower()}"
-    )
-    doc.paragraphs[10].text = (
-        f"1.1. Amaliyot joyi va muddati {student.company}, {student.company_address} muddati: "
-        f"{start_parts['day']} {start_parts['month']} {start_parts['year']} dan "
-        f"{end_parts['day']} {end_parts['month']} {end_parts['year']} gacha"
-    )
-    doc.paragraphs[12].text = f"Universitetdan {student.practice_supervisor}"
-    doc.paragraphs[14].text = f"Korxonadan {student.company_director}"
-    doc.paragraphs[16].text = (
-        f"1.3. Talaba {student.full_name} ga “{student.faculty}” kafedrasidan berilgan individual topshiriqlar "
-        f"{practice_type.lower()} bo'yicha kundalik yuritish va hisobot tayyorlash."
-    )
-    doc.paragraphs[17].text = (
-        f"1.4. Amaliyotga keldi: {start_parts['year']}-yil «{start_parts['day']}» {start_parts['month']}, "
-        f"ketdi: {end_parts['year']}-yil «{end_parts['day']}» {end_parts['month']}"
-    )
-    if len(doc.paragraphs) > 44:
-        doc.paragraphs[42].text = f"Universitetdan amaliyot rahbari        ____________________    {student.practice_supervisor}"
-        doc.paragraphs[43].text = f"Kafedra mudiri                         ____________________    {student.department_head}"
-    if course == 3:
-        doc.paragraphs[25].text = "2.6. Amaliyot muddati 3-bosqichda o'quv reja asosida belgilanadi."
-    for idx in (12, 14):
-        if idx < len(doc.paragraphs):
-            center_paragraph(doc.paragraphs[idx], font_size_pt=11)
-    for idx in (13, 15):
-        if idx < len(doc.paragraphs):
-            center_paragraph(doc.paragraphs[idx], font_size_pt=9)
-    return doc
-
-
-def generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str):
-    template_path = get_available_runtime_template_path("yollanma")
-    if not template_path:
-        return build_fallback_document("Yo'llanma", student, course, practice_type, start_date_str, end_date_str)
-
-    doc = Document(template_path)
-    normalize_document_formatting(doc)
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-
-    doc.paragraphs[4].text = (
-        "Muhammad al-Xorazmiy nomidagi Toshkent axborot texnologiyalari universiteti O‘zbekiston Respublikasi "
-        "Oliy taʼlim, fan va innovatsiyalar vazirligi tomonidan tasdiqlangan “Oliy ta’lim muassasalari "
-        f"talabalarining malaka amaliyotini o‘tash tartibi to‘g‘risidagi nizom” va {student.company}"
-    )
-    doc.paragraphs[6].text = (
-        f"{student.company} hamda Muhammad al-Xorazmiy nomidagi TATU o‘rtasidagi shartnoma asosida"
-    )
-    doc.paragraphs[7].text = f"{student.direction or student.faculty} ta’lim yo‘nalishida tahsil olayotgan talaba"
-    doc.paragraphs[9].text = f"{student.full_name} {practice_type.lower()}ni o‘tash uchun"
-    doc.paragraphs[12].text = f"{student.company} ga yubormoqda."
-    doc.paragraphs[15].text = (
-        f"Amaliyot muddati:     “{start_parts['day']}” {start_parts['month']} {start_parts['year']}-yildan,       "
-        f"“{end_parts['day']}” {end_parts['month']} {end_parts['year']} yilgacha"
-    )
-    doc.paragraphs[37].text = student.full_name
-    doc.paragraphs[39].text = f"{student.company} ga  amaliyotga keldi."
-    for idx in (5, 8, 10, 13, 37):
-        if idx < len(doc.paragraphs):
-            center_paragraph(doc.paragraphs[idx], font_size_pt=11)
-    for idx in (6, 9, 38):
-        if idx < len(doc.paragraphs):
-            center_paragraph(doc.paragraphs[idx], font_size_pt=9)
-    return doc
-
-
-@login_required(login_url='login')
+@login_required(login_url="login")
 def dashboard_view(request):
     profile = ensure_profile(request.user)
     students = Student.objects.all()
     student_page = Paginator(students.order_by("-id"), 3).get_page(request.GET.get("students_page"))
-    context = {
-        "profile": profile,
-        "student_count": students.count(),
-        "enterprise_count": students.values("company").distinct().count(),
-        "document_count": students.count() * len(DOCUMENT_ARCHIVE_TYPES),
-        "recent_students": student_page.object_list,
-        "student_page": student_page,
-    }
-    return render(request, "app_excel/dashboard.html", context)
+    return render(
+        request,
+        "app_excel/dashboard.html",
+        {
+            "profile": profile,
+            "student_count": students.count(),
+            "enterprise_count": students.values("company").distinct().count(),
+            "document_count": students.count() * len(DOCUMENT_ARCHIVE_TYPES),
+            "recent_students": student_page.object_list,
+            "student_page": student_page,
+        },
+    )
 
 
-@login_required(login_url='login')
+@login_required(login_url="login")
 def students_archive_view(request):
     profile = ensure_profile(request.user)
     students = Student.objects.all()
     student_page = Paginator(students.order_by("-id"), 3).get_page(request.GET.get("students_page"))
-    return render(request, "app_excel/students_archive.html", {
-        "profile": profile,
-        "recent_students": student_page.object_list,
-        "student_page": student_page,
-        "student_count": students.count(),
-    })
+    return render(
+        request,
+        "app_excel/students_archive.html",
+        {
+            "profile": profile,
+            "recent_students": student_page.object_list,
+            "student_page": student_page,
+            "student_count": students.count(),
+        },
+    )
 
 
-@login_required(login_url='login')
+@login_required(login_url="login")
 def companies_archive_view(request):
     profile = ensure_profile(request.user)
     students = list(Student.objects.all().order_by("company", "full_name"))
     company_archive = build_company_archive(students)
-    return render(request, "app_excel/companies_archive.html", {
-        "profile": profile,
-        "company_archive": company_archive,
-        "enterprise_count": len(company_archive),
-    })
+    return render(
+        request,
+        "app_excel/companies_archive.html",
+        {
+            "profile": profile,
+            "company_archive": company_archive,
+            "enterprise_count": len(company_archive),
+        },
+    )
 
 
-@login_required(login_url='login')
+@login_required(login_url="login")
 def documents_archive_view(request):
     profile = ensure_profile(request.user)
     students = Student.objects.all().order_by("full_name")
-    return render(request, "app_excel/documents_archive.html", {
-        "profile": profile,
-        "students_archive": students,
-        "document_types": DOCUMENT_ARCHIVE_TYPES,
-        "document_count": students.count() * len(DOCUMENT_ARCHIVE_TYPES),
-    })
+    return render(
+        request,
+        "app_excel/documents_archive.html",
+        {
+            "profile": profile,
+            "students_archive": students,
+            "document_types": DOCUMENT_ARCHIVE_TYPES,
+            "document_count": students.count() * len(DOCUMENT_ARCHIVE_TYPES),
+        },
+    )
 
-
-
-
-
-class StudentListCreateAPIView(APIView):
-    def get(self, request):
-        students = Student.objects.all()
-        serializer = StudentSerializer(students, many=True)
-        return Response(serializer.data)
-
-    def post(self, request):
-        serializer = StudentSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class StudentRetrieveUpdateDestroyAPIView(APIView):
-    def get_object(self, pk):
-        try:
-            return Student.objects.get(pk=pk)
-        except Student.DoesNotExist:
-            return None
-
-    def get(self, request, pk):
-        student = self.get_object(pk)
-        if not student:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        serializer = StudentSerializer(student)
-        return Response(serializer.data)
-
-    def put(self, request, pk):
-        student = self.get_object(pk)
-        if not student:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        serializer = StudentSerializer(student, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    def delete(self, request, pk):
-        student = self.get_object(pk)
-        if not student:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        student.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
 
 class StudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.all()
     serializer_class = StudentSerializer
 
 
-class StudentListCreateAPIView(APIView):
-    def get(self, request):
-        students = Student.objects.all()
-        serializer = StudentSerializer(students, many=True)
-        return Response(serializer.data)
-
-    def post(self, request):
-        serializer = StudentSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-
-class StudentRetrieveUpdateDestroyAPIView(APIView):
-    def get_object(self, pk):
-        try:
-            return Student.objects.get(pk=pk)
-        except Student.DoesNotExist:
-            return None
-
-    def get(self, request, pk):
-        student = self.get_object(pk)
-        if not student:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        serializer = StudentSerializer(student)
-        return Response(serializer.data)
-
-    def put(self, request, pk):
-        student = self.get_object(pk)
-        if not student:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        serializer = StudentSerializer(student, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    def delete(self, request, pk):
-        student = self.get_object(pk)
-        if not student:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        student.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-
-def format_uzbek_date(date_str):
+@login_required(login_url="login")
+@require_POST
+def ai_chat_view(request):
     try:
-        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-        oylar = [
-            "yanvar", "fevral", "mart", "aprel", "may", "iyun",
-            "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr"
-        ]
-        return f"{date_obj.year}-yil «{date_obj.day}» {oylar[date_obj.month - 1]}"
-    except Exception:
-        return ""
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Noto'g'ri JSON yuborildi."}, status=400)
+
+    message = clean_chat_text(payload.get("message"), 1000)
+
+    if not message:
+        return JsonResponse({"error": "Savol matnini kiriting."}, status=400)
+
+    return JsonResponse({"reply": get_default_chat_reply(message)})
 
 
-@login_required(login_url='login')
+@login_required(login_url="login")
 def download_sample_excel(request):
     workbook = openpyxl.Workbook()
     sheet = workbook.active
@@ -676,18 +628,182 @@ def download_sample_excel(request):
         "Korxona nomi",
         "Korxona manzili",
         "Korxona rahbari F.I.Sh.",
-        "Universitet mas'ul rahbari",
-        "Telefon raqami",
+        "Korxona telefoni",
+        "Universitet amaliyot rahbari",
         "Fakultet dekani",
         "Kafedra mudiri",
-        "Korxonadagi lavozimi",
-        "Izoh",
     ]
-
     sample_rows = [
-        ["Aliyev Bekzod Anvar o'g'li", "Axborot texnologiyalari", "Dasturiy injiniring", "SE-401", 4, "Bitiruv oldi amaliyoti", "2025-02-17", "2025-04-26", "TechSoft MCHJ", "Toshkent sh., Yunusobod tumani", "Karimov Sardor Rustamovich", "Rasulov Dilshod Qodirovich", "+998901112233", "O.B. Ro'zibayev", "N.O. Raximov", "Amaliyot rahbari", "Barcha ustunlar majburiy"],
-        ["Karimova Maftuna Jamshid qizi", "Axborot texnologiyalari", "Kompyuter injiniring", "KI-402", 4, "Bitiruv oldi amaliyoti", "2025-02-17", "2025-04-26", "Digital Systems", "Toshkent sh., Chilonzor tumani", "Ergashev Oybek Bahodirovich", "Rasulov Dilshod Qodirovich", "+998901112234", "O.B. Ro'zibayev", "N.O. Raximov", "Amaliyot rahbari", "Bo'sh qoldirmang"],
-        ["Toshpo'latov Azizbek Shavkat o'g'li", "Kompyuter texnologiyalari", "Axborot xavfsizligi", "AT-403", 4, "Bitiruv oldi amaliyoti", "2025-02-17", "2025-04-26", "SecureNet Group", "Toshkent sh., Shayxontohur tumani", "Mamatqulov Anvar Tohirovich", "Sobirova Nargiza Akmalovna", "+998901112235", "O.B. Ro'zibayev", "N.O. Raximov", "Amaliyot rahbari", "Telefon formatini saqlang"],
+        [
+            "Aliyev Bekzod Anvar o'g'li",
+            "Axborot texnologiyalari",
+            "Dasturiy injiniring",
+            "DI-401",
+            4,
+            "Bitiruv oldi amaliyoti",
+            "2025-02-17",
+            "2025-04-26",
+            "TechSoft MCHJ",
+            "Toshkent sh., Yunusobod tumani, Amir Temur ko'chasi 24-uy",
+            "Karimov Sardor Rustamovich",
+            "+998901112233",
+            "Rasulov Dilshod Qodirovich",
+            "O.B. Ro'zibayev",
+            "N.O. Raximov",
+        ],
+        [
+            "Karimova Maftuna Jamshid qizi",
+            "Axborot texnologiyalari",
+            "Kompyuter injiniring",
+            "KI-302",
+            3,
+            "Ishlab chiqarish amaliyoti",
+            "2025-06-02",
+            "2025-07-12",
+            "Digital Systems MCHJ",
+            "Toshkent sh., Chilonzor tumani, Bunyodkor ko'chasi 18-uy",
+            "Ergashev Oybek Bahodirovich",
+            "+998901112234",
+            "Rasulov Dilshod Qodirovich",
+            "O.B. Ro'zibayev",
+            "N.O. Raximov",
+        ],
+        [
+            "Tursunov Azizbek Ilhom o'g'li",
+            "Iqtisodiyot",
+            "Raqamli iqtisodiyot",
+            "RI-403",
+            4,
+            "Bitiruv oldi amaliyoti",
+            "2025-02-17",
+            "2025-04-26",
+            "Agrobank ATB",
+            "Toshkent sh., Shayxontohur tumani, Navoiy ko'chasi 30-uy",
+            "To'xtayev Jamshid Abduvaliyevich",
+            "+998901112235",
+            "Sattorov Akmal Nabiyevich",
+            "D.M. Abdullayeva",
+            "S.R. Ismoilov",
+        ],
+        [
+            "Saidova Mohinur Baxtiyor qizi",
+            "Iqtisodiyot",
+            "Moliya va moliyaviy texnologiyalar",
+            "MT-301",
+            3,
+            "Ishlab chiqarish amaliyoti",
+            "2025-06-02",
+            "2025-07-12",
+            "Hamkorbank ATB",
+            "Andijon sh., Bobur shoh ko'chasi 52-uy",
+            "Qodirov Lazizbek Muzaffarovich",
+            "+998901112236",
+            "Sattorov Akmal Nabiyevich",
+            "D.M. Abdullayeva",
+            "S.R. Ismoilov",
+        ],
+        [
+            "Nazarov Shoxrux Zafar o'g'li",
+            "Telekommunikatsiya texnologiyalari",
+            "Telekommunikatsiya injiniringi",
+            "TI-404",
+            4,
+            "Bitiruv oldi amaliyoti",
+            "2025-02-17",
+            "2025-04-26",
+            "Uztelecom AK",
+            "Toshkent sh., Mirzo Ulug'bek tumani, Mustaqillik shoh ko'chasi 28-uy",
+            "Ahmedov Farrux Xamidovich",
+            "+998901112237",
+            "Yusupov Javlon Shavkatovich",
+            "A.T. Mahmudov",
+            "B.K. Normatov",
+        ],
+        [
+            "Qodirova Dilnoza Sherali qizi",
+            "Telekommunikatsiya texnologiyalari",
+            "Axborot xavfsizligi",
+            "AX-303",
+            3,
+            "Ishlab chiqarish amaliyoti",
+            "2025-06-02",
+            "2025-07-12",
+            "CyberSec Solutions MCHJ",
+            "Samarqand sh., Rudakiy ko'chasi 77-uy",
+            "Nishonov Abror G'ayratovich",
+            "+998901112238",
+            "Yusupov Javlon Shavkatovich",
+            "A.T. Mahmudov",
+            "B.K. Normatov",
+        ],
+        [
+            "Rustamov Diyorbek Bahrom o'g'li",
+            "Energetika",
+            "Elektr energetikasi",
+            "EE-402",
+            4,
+            "Bitiruv oldi amaliyoti",
+            "2025-02-17",
+            "2025-04-26",
+            "Hududiy elektr tarmoqlari AJ",
+            "Farg'ona sh., Al-Farg'oniy ko'chasi 14-uy",
+            "Mirzayev Otabek Raufovich",
+            "+998901112239",
+            "Xolmatov Ulug'bek Sobirovich",
+            "M.I. Xudoyberdiyev",
+            "F.A. Umarov",
+        ],
+        [
+            "Ismoilova Sevinch Ravshan qizi",
+            "Energetika",
+            "Muqobil energiya manbalari",
+            "ME-304",
+            3,
+            "Ishlab chiqarish amaliyoti",
+            "2025-06-02",
+            "2025-07-12",
+            "Solar Energy Group MCHJ",
+            "Namangan sh., Do'stlik shoh ko'chasi 9-uy",
+            "Abdurahmonov Shohjahon Ikromovich",
+            "+998901112240",
+            "Xolmatov Ulug'bek Sobirovich",
+            "M.I. Xudoyberdiyev",
+            "F.A. Umarov",
+        ],
+        [
+            "Mamatqulov Jasurbek Olim o'g'li",
+            "Transport tizimlari",
+            "Logistika",
+            "LG-405",
+            4,
+            "Bitiruv oldi amaliyoti",
+            "2025-02-17",
+            "2025-04-26",
+            "UzAuto Motors AJ",
+            "Asaka sh., Bobur ko'chasi 73-uy",
+            "Xaydarov Bekzod G'ulomovich",
+            "+998901112241",
+            "Norboyev Sanjar Sobitovich",
+            "R.X. Jo'rayev",
+            "I.S. To'raqulov",
+        ],
+        [
+            "Xudoyberdiyeva Madina Ulug'bek qizi",
+            "Transport tizimlari",
+            "Avtomobil servisi",
+            "AS-305",
+            3,
+            "Ishlab chiqarish amaliyoti",
+            "2025-06-02",
+            "2025-07-12",
+            "Express Logistics MCHJ",
+            "Buxoro sh., Ibn Sino ko'chasi 41-uy",
+            "Sobirov Davron Akmalovich",
+            "+998901112242",
+            "Norboyev Sanjar Sobitovich",
+            "R.X. Jo'rayev",
+            "I.S. To'raqulov",
+        ],
     ]
 
     header_fill = openpyxl.styles.PatternFill("solid", fgColor="4338CA")
@@ -703,12 +819,7 @@ def download_sample_excel(request):
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = header_alignment
-        cell.border = openpyxl.styles.Border(
-            left=medium_side,
-            right=medium_side,
-            top=medium_side,
-            bottom=medium_side,
-        )
+        cell.border = openpyxl.styles.Border(left=medium_side, right=medium_side, top=medium_side, bottom=medium_side)
         sheet.column_dimensions[openpyxl.utils.get_column_letter(index)].width = max(len(header) + 4, 20)
 
     for row_index, row_data in enumerate(sample_rows, start=2):
@@ -716,15 +827,8 @@ def download_sample_excel(request):
             cell = sheet.cell(row=row_index, column=column_index, value=value)
             cell.alignment = data_alignment
             cell.fill = data_fill
-            cell.border = openpyxl.styles.Border(
-                left=thin_side,
-                right=thin_side,
-                top=thin_side,
-                bottom=thin_side,
-            )
-
-    for row in range(2, len(sample_rows) + 2):
-        sheet.row_dimensions[row].height = 22
+            cell.border = openpyxl.styles.Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+        sheet.row_dimensions[row_index].height = 22
 
     guide_sheet = workbook.create_sheet("Yoriqnoma")
     guide_rows = [
@@ -740,24 +844,16 @@ def download_sample_excel(request):
         ["Korxona nomi", "Hujjatlarda chiqadigan tashkilot nomi", "Ha"],
         ["Korxona manzili", "To'liq manzil", "Ha"],
         ["Korxona rahbari F.I.Sh.", "Korxona rahbari yoki korxonadagi amaliyot rahbari", "Ha"],
-        ["Universitet mas'ul rahbari", "Universitetdagi amaliyot rahbari", "Ha"],
-        ["Telefon raqami", "Masalan: +998901112233", "Ha"],
+        ["Korxona telefoni", "Masalan: +998901112233", "Ha"],
+        ["Universitet amaliyot rahbari", "Universitetdagi amaliyot rahbari", "Ha"],
         ["Fakultet dekani", "Yo'llanma uchun kerak", "Ha"],
         ["Kafedra mudiri", "Kundalik va yo'llanma uchun kerak", "Ha"],
-        ["Korxonadagi lavozimi", "Hozircha ixtiyoriy eslatma ustuni", "Yo'q"],
-        ["Izoh", "Foydalanuvchi uchun eslatma", "Yo'q"],
     ]
-
     for row_index, row_data in enumerate(guide_rows, start=1):
         for column_index, value in enumerate(row_data, start=1):
             cell = guide_sheet.cell(row=row_index, column=column_index, value=value)
             cell.alignment = openpyxl.styles.Alignment(vertical="center", horizontal="left", wrap_text=True)
-            cell.border = openpyxl.styles.Border(
-                left=thin_side,
-                right=thin_side,
-                top=thin_side,
-                bottom=thin_side,
-            )
+            cell.border = openpyxl.styles.Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
             if row_index == 1:
                 cell.font = header_font
                 cell.fill = header_fill
@@ -768,7 +864,6 @@ def download_sample_excel(request):
     guide_sheet.column_dimensions["B"].width = 48
     guide_sheet.column_dimensions["C"].width = 14
     guide_sheet.freeze_panes = "A2"
-
     sheet.row_dimensions[1].height = 28
     sheet.freeze_panes = "A2"
     sheet.auto_filter.ref = f"A1:{openpyxl.utils.get_column_letter(len(headers))}{len(sample_rows) + 1}"
@@ -776,16 +871,12 @@ def download_sample_excel(request):
     buffer = io.BytesIO()
     workbook.save(buffer)
     buffer.seek(0)
-
-    response = HttpResponse(
-        buffer.getvalue(),
-        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+    response = HttpResponse(buffer.getvalue(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     response["Content-Disposition"] = 'attachment; filename="namuna_talabalar.xlsx"'
     return response
 
 
-@login_required(login_url='login')
+@login_required(login_url="login")
 def download_template_source(request, filename):
     allowed_files = {item["key"]: item["filename"] for item in get_template_sources()}
     target_name = allowed_files.get(filename)
@@ -799,235 +890,205 @@ def download_template_source(request, filename):
     return FileResponse(open(file_path, "rb"), as_attachment=True, filename=target_name)
 
 
-@login_required(login_url='login')
+@login_required(login_url="login")
 def upload_excel(request):
     profile = ensure_profile(request.user)
-    if request.method == 'POST' and request.FILES.get('file'):
-        uploaded_file = request.FILES['file']
+    if request.method == "POST" and request.FILES.get("file"):
+        uploaded_file = request.FILES["file"]
         filename = uploaded_file.name.lower()
         course = None
         start_date = ""
         end_date = ""
         practice_type = ""
 
-        Student.objects.all().delete()
-
         try:
-            if filename.endswith('.xlsx'):
-                wb = openpyxl.load_workbook(uploaded_file)
-                sheet = wb.active
-                header_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), None)
-                if not header_row:
-                    raise ValueError("Excel faylda sarlavha qatori topilmadi.")
+            if not filename.endswith(".xlsx"):
+                raise ValueError("Faqat .xlsx Excel fayl yuklash mumkin.")
 
-                normalized_headers = [normalize_excel_header(value) for value in header_row]
-                for row in sheet.iter_rows(min_row=2, values_only=True):
-                    row_map = {
-                        normalized_headers[index]: row[index]
-                        for index in range(min(len(normalized_headers), len(row)))
-                        if normalized_headers[index]
-                    }
-                    full_name = get_excel_value(
-                        row_map,
-                        "Talabaning F.I.Sh.",
-                        "F.I.Sh.",
-                        "Talaba F.I.Sh.",
-                    )
-                    if not full_name:
-                        continue
-                    if course is None:
-                        raw_course = get_excel_value(row_map, "Kurs")
-                        course = int(raw_course) if raw_course else 4
-                    if not start_date:
-                        start_date = normalize_excel_date(row_map.get(normalize_excel_header("Boshlanish sanasi")))
-                    if not end_date:
-                        end_date = normalize_excel_date(row_map.get(normalize_excel_header("Tugash sanasi")))
-                    if not practice_type:
-                        practice_type = get_excel_value(row_map, "Amaliyot turi")
-                    Student.objects.create(
+            workbook = openpyxl.load_workbook(uploaded_file)
+            sheet = workbook.active
+            header_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), None)
+            if not header_row:
+                raise ValueError("Excel faylda sarlavha qatori topilmadi.")
+
+            normalized_headers = [normalize_excel_header(value) for value in header_row]
+            new_students = []
+            for row in sheet.iter_rows(min_row=2, values_only=True):
+                row_map = {
+                    normalized_headers[index]: row[index]
+                    for index in range(min(len(normalized_headers), len(row)))
+                    if normalized_headers[index]
+                }
+                full_name = get_excel_value(row_map, "Talabaning F.I.Sh.", "F.I.Sh.", "Talaba F.I.Sh.")
+                if not full_name:
+                    continue
+
+                if course is None:
+                    raw_course = get_excel_value(row_map, "Kurs")
+                    course = int(raw_course) if raw_course else 4
+                if not start_date:
+                    start_date = normalize_excel_date(row_map.get(normalize_excel_header("Boshlanish sanasi")))
+                if not end_date:
+                    end_date = normalize_excel_date(row_map.get(normalize_excel_header("Tugash sanasi")))
+                if not practice_type:
+                    practice_type = get_excel_value(row_map, "Amaliyot turi")
+
+                new_students.append(
+                    Student(
                         full_name=full_name,
                         direction=get_excel_value(row_map, "Yo'nalish"),
                         faculty=get_excel_value(row_map, "Fakultet"),
                         group=get_excel_value(row_map, "Guruh"),
-                        company=get_excel_value(row_map, "Korxona nomi", "Amaliyot o'tash joyi"),
+                        company=get_excel_value(row_map, "Korxona nomi"),
                         company_address=get_excel_value(row_map, "Korxona manzili"),
-                        company_director=get_excel_value(
-                            row_map,
-                            "Korxona rahbari F.I.Sh.",
-                            "Korxonadagi amaliyot rahbari",
-                        ),
-                        practice_supervisor=get_excel_value(
-                            row_map,
-                            "Universitet mas'ul rahbari",
-                            "Universitetdagi amaliyot rahbari",
-                        ),
-                        company_phone=get_excel_value(row_map, "Telefon raqami", "Korxona telefoni"),
+                        company_director=get_excel_value(row_map, "Korxona rahbari F.I.Sh."),
+                        company_phone=get_excel_value(row_map, "Korxona telefoni"),
+                        practice_supervisor=get_excel_value(row_map, "Universitet amaliyot rahbari"),
                         faculty_dean=get_excel_value(row_map, "Fakultet dekani"),
                         department_head=get_excel_value(row_map, "Kafedra mudiri"),
                     )
+                )
 
-                if course is None:
-                    raise ValueError("Excel faylda kamida bitta talaba qatori bo'lishi kerak.")
-                if not start_date or not end_date:
-                    raise ValueError("Excel faylda 'Boshlanish sanasi' va 'Tugash sanasi' ustunlarini to'ldiring.")
-                if not practice_type:
-                    practice_type = get_practice_type(course)
-
-            elif filename.endswith('.docx'):
-                course = int(request.POST.get("course") or request.session.get("course") or 4)
-                start_date = request.POST.get("start_date", "") or request.session.get("start_date", "")
-                end_date = request.POST.get("end_date", "") or request.session.get("end_date", "")
+            if not new_students:
+                raise ValueError("Excel faylda kamida bitta talaba qatori bo'lishi kerak.")
+            if not start_date or not end_date:
+                raise ValueError("Excel faylda 'Boshlanish sanasi' va 'Tugash sanasi' ustunlarini to'ldiring.")
+            if not practice_type:
                 practice_type = get_practice_type(course)
-                doc = Document(uploaded_file)
-                table = doc.tables[0]
-                for row in table.rows[1:]:
-                    cells = row.cells
-                    Student.objects.create(
-                        full_name=cells[1].text.strip(),
-                        direction="",
-                        group=cells[2].text.strip(),
-                        company=cells[3].text.strip(),
-                        company_address=cells[4].text.strip(),
-                        company_director=cells[5].text.strip(),
-                        company_phone=cells[6].text.strip(),
-                        practice_supervisor=cells[7].text.strip(),
-                        faculty=cells[8].text.strip(),
-                        faculty_dean="",
-                        department_head="",
-                    )
-            else:
-                return render(request, 'app_excel/upload.html', {
-                    'error': 'Faqat .xlsx yoki .docx fayl yuklash mumkin.',
-                    'profile': profile,
-                    'template_sources': get_template_sources(),
-                })
 
-            request.session['uploaded'] = True
-            request.session['course'] = course
-            request.session['start_date'] = start_date
-            request.session['end_date'] = end_date
-            request.session['practice_type'] = practice_type or get_practice_type(course)
-            return redirect('upload_excel')
+            validation_issues = validate_students_for_documents(new_students, course, start_date, end_date)
+            if validation_issues:
+                raise ValueError("Ma'lumotlarni to'ldiring: " + " ; ".join(validation_issues[:10]))
 
-        except Exception as e:
-            return render(request, 'app_excel/upload.html', {
-                'error': str(e),
-                'profile': profile,
-                'template_sources': get_template_sources(),
-            })
+            import_result = upsert_imported_students(new_students)
 
-    uploaded = request.session.pop('uploaded', False)
-    return render(request, 'app_excel/upload.html', {
-        'uploaded': uploaded,
-        'profile': profile,
-        'template_sources': get_template_sources(),
-    })
+            request.session["uploaded"] = True
+            request.session["upload_added_count"] = import_result["added"]
+            request.session["upload_updated_count"] = import_result["updated"]
+            request.session["upload_skipped_duplicates"] = import_result["skipped_duplicates"]
+            request.session["course"] = course
+            request.session["start_date"] = start_date
+            request.session["end_date"] = end_date
+            request.session["practice_type"] = practice_type or get_practice_type(course)
+            return redirect("upload_excel")
+
+        except Exception as exc:
+            return render(
+                request,
+                "app_excel/upload.html",
+                {"error": str(exc), "profile": profile, "template_sources": get_template_sources()},
+            )
+
+    uploaded = request.session.pop("uploaded", False)
+    return render(
+        request,
+        "app_excel/upload.html",
+        {
+            "uploaded": uploaded,
+            "upload_added_count": request.session.pop("upload_added_count", 0),
+            "upload_updated_count": request.session.pop("upload_updated_count", 0),
+            "upload_skipped_duplicates": request.session.pop("upload_skipped_duplicates", 0),
+            "profile": profile,
+            "template_sources": get_template_sources(),
+        },
+    )
 
 
-@login_required(login_url='login')
+@login_required(login_url="login")
 def export_to_word(request):
     missing_templates = validate_runtime_templates()
     if missing_templates:
-        missing_labels = ", ".join(missing_templates)
-        return HttpResponse(f"Faol DOCX shablonlar topilmadi: {missing_labels}. Avval tizim shablonlarini joylang.", status=400)
+        return HttpResponse(f"Faol DOCX shablonlarda muammo bor: {', '.join(missing_templates)}.", status=400)
 
     students = Student.objects.all()
     if not students.exists():
-        return HttpResponse("Hali hech qanday talaba ma'lumotlari mavjud emas.")
+        return HttpResponse("Hali hech qanday talaba ma'lumotlari mavjud emas.", status=400)
 
-    course = int(request.GET.get("course", 4))
-    practice_type = get_practice_type(course)
+    course = int(request.GET.get("course") or request.session.get("course") or 4)
+    practice_type = request.session.get("practice_type") or get_practice_type(course)
     first_student = students.first()
-
     start_date_str = request.session.get("start_date", "2026-02-02")
     end_date_str = request.session.get("end_date", "2026-04-11")
-    doc = generate_shartnoma_document(first_student, course, practice_type, start_date_str, end_date_str)
-    return save_document_response(doc, f"{sanitize_filename(first_student.company)}_shartnoma.docx")
+
+    validation_issues = validate_students_for_documents([first_student], course, start_date_str, end_date_str)
+    if validation_issues:
+        return HttpResponse(f"Ma'lumotlarni to'ldiring. Hujjat yuklanmadi: {' ; '.join(validation_issues[:10])}", status=400)
+
+    document = generate_shartnoma_document(first_student, course, practice_type, start_date_str, end_date_str)
+    return save_document_response(document, f"{sanitize_filename(first_student.company)}_shartnoma.docx")
 
 
-
-
-@login_required(login_url='login')
+@login_required(login_url="login")
 def export_all_documents_zip(request):
     missing_templates = validate_runtime_templates()
     if missing_templates:
-        missing_labels = ", ".join(missing_templates)
-        return HttpResponse(f"ZIP yaratish uchun faol DOCX shablonlar topilmadi: {missing_labels}.", status=400)
+        return HttpResponse(f"ZIP yaratish uchun faol DOCX shablonlarda muammo bor: {', '.join(missing_templates)}.", status=400)
 
     students = Student.objects.all()
     if not students.exists():
-        return HttpResponse("Talabalar ma'lumotlari topilmadi.")
+        return HttpResponse("Talabalar ma'lumotlari topilmadi.", status=400)
 
-    # Foydalanuvchi kiritgan session ma'lumotlari
     course = int(request.session.get("course", 4))
     start_date_str = request.session.get("start_date", "2025-02-17")
     end_date_str = request.session.get("end_date", "2025-04-26")
+    validation_issues = validate_students_for_documents(students, course, start_date_str, end_date_str)
+    if validation_issues:
+        return HttpResponse(f"Ma'lumotlarni to'ldiring. ZIP yuklanmadi: {' ; '.join(validation_issues[:10])}", status=400)
 
-    # O'zbekcha oylar
-    OY_NOMLARI = {
-        "January": "yanvar", "February": "fevral", "March": "mart",
-        "April": "aprel", "May": "may", "June": "iyun", "July": "iyul",
-        "August": "avgust", "September": "sentabr", "October": "oktabr",
-        "November": "noyabr", "December": "dekabr"
-    }
-
-
-    start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
-    end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
-    practice_type = get_practice_type(course)
-
-
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w") as zip_file:
-        for index, student in enumerate(students, start=1):
-            folder = f"Hujjatlar/{index:02}_{sanitize_filename(student.full_name)}"
-            doc1 = generate_shartnoma_document(student, course, practice_type, start_date_str, end_date_str)
-            io1 = io.BytesIO()
-            doc1.save(io1)
-            io1.seek(0)
-            zip_file.writestr(f"{folder}/shartnoma.docx", io1.read())
-
-            doc2 = generate_kundalik_document(student, course, practice_type, start_date_str, end_date_str)
-            io2 = io.BytesIO()
-            doc2.save(io2)
-            io2.seek(0)
-            zip_file.writestr(f"{folder}/kundalik.docx", io2.read())
-
-            doc3 = generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str)
-            io3 = io.BytesIO()
-            doc3.save(io3)
-            io3.seek(0)
-            zip_file.writestr(f"{folder}/yollanma.docx", io3.read())
-
-    zip_buffer.seek(0)
-    response = HttpResponse(zip_buffer, content_type='application/zip')
-    response['Content-Disposition'] = 'attachment; filename=Hujjatlar.zip'
+    practice_type = request.session.get("practice_type") or get_practice_type(course)
+    zip_buffer = build_documents_zip(students, course, practice_type, start_date_str, end_date_str)
+    response = HttpResponse(zip_buffer.read(), content_type="application/zip")
+    response["Content-Disposition"] = 'attachment; filename="Hujjatlar.zip"'
     return response
 
 
-
-@login_required(login_url='login')
+@login_required(login_url="login")
 def generate_contract_for_company(request, company_name):
     missing_templates = validate_runtime_templates()
     if missing_templates:
-        missing_labels = ", ".join(missing_templates)
-        return HttpResponse(f"Faol DOCX shablonlar topilmadi: {missing_labels}.", status=400)
+        return HttpResponse(f"Faol DOCX shablonlarda muammo bor: {', '.join(missing_templates)}.", status=400)
 
     students = Student.objects.filter(company=company_name)
     if not students.exists():
-        return HttpResponse(" Bu korxona bo‘yicha talabalar topilmadi.")
+        return HttpResponse("Bu korxona bo'yicha talabalar topilmadi.", status=404)
 
-    course = int(request.GET.get("course", 4))
-    practice_type = get_practice_type(course)
-
+    course = int(request.GET.get("course") or request.session.get("course") or 4)
+    practice_type = request.session.get("practice_type") or get_practice_type(course)
     first_student = students.first()
-    student_count = students.count()
-
     start_date_str = request.session.get("start_date", "2026-02-02")
     end_date_str = request.session.get("end_date", "2026-04-11")
-    doc = generate_shartnoma_document(first_student, course, practice_type, start_date_str, end_date_str)
-    return save_document_response(doc, f"{sanitize_filename(company_name)}_shartnoma.docx")
+    document = generate_shartnoma_document(first_student, course, practice_type, start_date_str, end_date_str)
+    return save_document_response(document, f"{sanitize_filename(company_name)}_shartnoma.docx")
 
+
+@login_required(login_url="login")
+def download_student_document(request, student_id, document_type):
+    missing_templates = validate_runtime_templates()
+    if missing_templates:
+        return HttpResponse(f"Faol DOCX shablonlarda muammo bor: {', '.join(missing_templates)}.", status=400)
+
+    student = get_object_or_404(Student, pk=student_id)
+    course = int(request.GET.get("course") or request.session.get("course") or 4)
+    practice_type = request.session.get("practice_type") or get_practice_type(course)
+    start_date_str = request.session.get("start_date", "2025-02-17")
+    end_date_str = request.session.get("end_date", "2025-04-26")
+
+    validation_issues = validate_students_for_documents([student], course, start_date_str, end_date_str)
+    if validation_issues:
+        return HttpResponse(f"Ma'lumotlarni to'ldiring. Hujjat yuklanmadi: {' ; '.join(validation_issues[:10])}", status=400)
+
+    generators = {
+        "shartnoma": generate_shartnoma_document,
+        "kundalik": generate_kundalik_document,
+        "yollanma": generate_yollanma_document,
+    }
+    generator = generators.get(document_type)
+    if generator is None:
+        return HttpResponse("Hujjat turi topilmadi.", status=404)
+
+    document = generator(student, course, practice_type, start_date_str, end_date_str)
+    filename = f"{sanitize_filename(student.full_name)}_{document_type}.docx"
+    return save_document_response(document, filename)
 
 
 def login_view(request):
@@ -1035,28 +1096,22 @@ def login_view(request):
         username = request.POST.get("username")
         password = request.POST.get("password")
         remember = request.POST.get("remember")
-
         user = authenticate(request, username=username, password=password)
+
         if user:
             login(request, user)
             ensure_profile(user)
-
-            if remember:
-                request.session.set_expiry(31536000)
-            else:
-                request.session.set_expiry(0)
-
+            request.session.set_expiry(31536000 if remember else 0)
             return redirect("dashboard")
-        else:
-            messages.error(request, " Login yoki parol noto‘g‘ri.")
 
+        messages.error(request, "Login yoki parol noto'g'ri.")
     return render(request, "app_excel/login.html")
 
 
 def register_view(request):
     if request.method == "POST":
         full_name = request.POST.get("full_name", "").strip()
-        username = request.POST.get("username")
+        username = request.POST.get("username", "").strip()
         email = request.POST.get("email", "").strip()
         password1 = request.POST.get("password1")
         password2 = request.POST.get("password2")
@@ -1072,22 +1127,18 @@ def register_view(request):
         elif User.objects.filter(email=email).exists():
             messages.error(request, "Bu email allaqachon mavjud!")
         elif len(password1 or "") < 8:
-            messages.error(request, "Parol kamida 8 ta belgidan iborat bo‘lishi kerak.")
+            messages.error(request, "Parol kamida 8 ta belgidan iborat bo'lishi kerak.")
         else:
             name_parts = full_name.split(maxsplit=1)
-            first_name = name_parts[0]
-            last_name = name_parts[1] if len(name_parts) > 1 else ""
             user = User.objects.create_user(
                 username=username,
                 email=email,
                 password=password1,
-                first_name=first_name,
-                last_name=last_name,
+                first_name=name_parts[0],
+                last_name=name_parts[1] if len(name_parts) > 1 else "",
             )
-            profile = ensure_profile(user)
-            profile.save()
-
-            messages.success(request, "Muvaffaqiyatli ro‘yxatdan o‘tildi.")
+            ensure_profile(user).save()
+            messages.success(request, "Muvaffaqiyatli ro'yxatdan o'tildi.")
             login(request, user)
             return redirect("dashboard")
 
@@ -1099,245 +1150,13 @@ def logout_view(request):
     return redirect("login")
 
 
-def generate_documents_zip():
-    missing_templates = validate_runtime_templates()
-    if missing_templates:
-        raise FileNotFoundError(f"Faol DOCX shablonlar topilmadi: {', '.join(missing_templates)}")
-
-    students = Student.objects.all()
-    course = int(getattr(settings, "DEFAULT_PRACTICE_COURSE", 4))
-    practice_type = get_practice_type(course)
-    start_date_str = "2026-02-02"
-    end_date_str = "2026-04-11"
-
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w") as zip_file:
-        for index, student in enumerate(students, start=1):
-            folder = f"Hujjatlar/{index:02}_{sanitize_filename(student.full_name)}"
-            generated_docs = [
-                ("shartnoma", generate_shartnoma_document(student, course, practice_type, start_date_str, end_date_str)),
-                ("kundalik", generate_kundalik_document(student, course, practice_type, start_date_str, end_date_str)),
-                ("yollanma", generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str)),
-            ]
-            for name, generated_doc in generated_docs:
-                io_doc = io.BytesIO()
-                generated_doc.save(io_doc)
-                io_doc.seek(0)
-                zip_file.writestr(f"{folder}/{name}.docx", io_doc.read())
-
-    zip_buffer.seek(0)
-    return zip_buffer
-
-
-@login_required(login_url='login')
-def export_to_word(request):
-    students = Student.objects.all()
-    if not students.exists():
-        return HttpResponse("Hali hech qanday talaba ma'lumotlari mavjud emas.")
-
-    course = int(request.GET.get("course", 4))
-    practice_type = get_practice_type(course)
-    first_student = students.first()
-    start_date_str = request.session.get("start_date", "2026-02-02")
-    end_date_str = request.session.get("end_date", "2026-04-11")
-
-    doc = generate_shartnoma_document(first_student, course, practice_type, start_date_str, end_date_str)
-    return save_document_response(doc, f"{sanitize_filename(first_student.company)}_shartnoma.docx")
-
-
-@login_required(login_url='login')
-def export_all_documents_zip(request):
-    students = Student.objects.all()
-    if not students.exists():
-        return HttpResponse("Talabalar ma'lumotlari topilmadi.", status=400)
-
-    course = int(request.session.get("course", 4))
-    start_date_str = request.session.get("start_date", "2025-02-17")
-    end_date_str = request.session.get("end_date", "2025-04-26")
-    validation_issues = validate_students_for_documents(students, course, start_date_str, end_date_str)
-    if validation_issues:
-        issues_text = " ; ".join(validation_issues[:10])
-        return HttpResponse(f"Ma'lumotlarni to'ldiring. ZIP yuklanmadi: {issues_text}", status=400)
-    practice_type = get_practice_type(course)
-
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w") as zip_file:
-        for index, student in enumerate(students, start=1):
-            folder = f"Hujjatlar/{index:02}_{sanitize_filename(student.full_name)}"
-            generated_docs = [
-                ("shartnoma", generate_shartnoma_document(student, course, practice_type, start_date_str, end_date_str)),
-                ("kundalik", generate_kundalik_document(student, course, practice_type, start_date_str, end_date_str)),
-                ("yollanma", generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str)),
-            ]
-            for filename, generated_doc in generated_docs:
-                temp_buffer = io.BytesIO()
-                generated_doc.save(temp_buffer)
-                temp_buffer.seek(0)
-                zip_file.writestr(f"{folder}/{filename}.docx", temp_buffer.read())
-
-    zip_buffer.seek(0)
-    response = HttpResponse(zip_buffer.read(), content_type='application/zip')
-    response['Content-Disposition'] = 'attachment; filename="Hujjatlar.zip"'
-    return response
-
-
-@login_required(login_url='login')
-def generate_contract_for_company(request, company_name):
-    students = Student.objects.filter(company=company_name)
-    if not students.exists():
-        return HttpResponse("Bu korxona bo'yicha talabalar topilmadi.", status=404)
-
-    course = int(request.GET.get("course", 4))
-    practice_type = get_practice_type(course)
-    first_student = students.first()
-    start_date_str = request.session.get("start_date", "2026-02-02")
-    end_date_str = request.session.get("end_date", "2026-04-11")
-
-    doc = generate_shartnoma_document(first_student, course, practice_type, start_date_str, end_date_str)
-    return save_document_response(doc, f"{sanitize_filename(company_name)}_shartnoma.docx")
-
-
-def generate_documents_zip():
-    students = Student.objects.all()
-    course = int(getattr(settings, "DEFAULT_PRACTICE_COURSE", 4))
-    practice_type = get_practice_type(course)
-    start_date_str = "2026-02-02"
-    end_date_str = "2026-04-11"
-
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w") as zip_file:
-        for index, student in enumerate(students, start=1):
-            folder = f"Hujjatlar/{index:02}_{sanitize_filename(student.full_name)}"
-            generated_docs = [
-                ("shartnoma", generate_shartnoma_document(student, course, practice_type, start_date_str, end_date_str)),
-                ("kundalik", generate_kundalik_document(student, course, practice_type, start_date_str, end_date_str)),
-                ("yollanma", generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str)),
-            ]
-            for filename, generated_doc in generated_docs:
-                temp_buffer = io.BytesIO()
-                generated_doc.save(temp_buffer)
-                temp_buffer.seek(0)
-                zip_file.writestr(f"{folder}/{filename}.docx", temp_buffer.read())
-
-    zip_buffer.seek(0)
-    return zip_buffer
-
-
-def generate_shartnoma_document(student, course, practice_type, start_date_str, end_date_str):
-    template_path = get_available_runtime_template_path("shartnoma")
-    if not template_path:
-        return build_fallback_document("Shartnoma", student, course, practice_type, start_date_str, end_date_str)
-
-    doc = Document(template_path)
-    normalize_document_formatting(doc)
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    company_count = get_company_student_count(student.company)
-
-    doc.paragraphs[0].text = f"TALABALARNING {practice_type.upper()}NI TASHKIL ETISH BO'YICHA SHARTNOMA"
-    doc.paragraphs[3].text = f"Toshkent sh.                                                                 {start_parts['year']}-yil «{start_parts['day']}» {start_parts['month']}"
-    doc.paragraphs[5].text = (
-        "Biz, quyida imzo chekuvchilar, Muhammad Al-Xorazmiy nomidagi Toshkent axborot texnologiyalari universiteti "
-        "(keying o'rinlarda – Universitet)dan tayinlangan shaxs Dj.Sultanov - o'quv ishlari bo'yicha prorektor bir tomondan,"
-    )
-    doc.paragraphs[6].text = student.company
-    doc.paragraphs[8].text = "(keying o'rinlarda – Korxona) dan tayinlangan shaxs"
-    doc.paragraphs[9].text = student.company_director
-
-    main_table = doc.tables[0]
-    main_table.rows[2].cells[1].text = student.direction or student.faculty
-    main_table.rows[2].cells[2].text = str(course)
-    main_table.rows[2].cells[3].text = practice_type
-    main_table.rows[2].cells[4].text = str(company_count)
-    main_table.rows[2].cells[5].text = start_parts["short"]
-    main_table.rows[2].cells[6].text = end_parts["short"]
-
-    info_table = doc.tables[1]
-    company_block = f"Korxona\n{student.company}\n{student.company_address}\nTel.: {student.company_phone}"
-    info_table.rows[0].cells[1].text = company_block
-    info_table.rows[4].cells[1].text = (
-        "Korxonadan ajratilgan\n"
-        f"amaliyot rahbari ________   {student.company_director}"
-    )
-    return doc
-
-
-def generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str):
-    template_path = get_available_runtime_template_path("yollanma")
-    if not template_path:
-        return build_fallback_document("Yo'llanma", student, course, practice_type, start_date_str, end_date_str)
-
-    doc = Document(template_path)
-    normalize_document_formatting(doc)
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-
-    doc.paragraphs[4].text = (
-        "Muxammad al-Xorazmiy nomidagi Toshkent axborot texnologiyalari universiteti O'zbekiston Respublikasi oliy va "
-        "o'rta maxsus ta'lim vazirligi tomonidan tasdiqlangan “Oliy ta'lim muassasalari talabalarining malaka "
-        f"amaliyotini o'tash tartibi to'g'risidagi nizom” va {student.company} hamda Muxammad al-Xorazmiy nomidagi "
-        f"TATU o'rtasidagi shartnoma asosida {student.direction or student.faculty} ta'lim yo'nalishida tahsil olayotgan talaba"
-    )
-    doc.paragraphs[5].text = f"{student.full_name} {practice_type.lower()}ni o'tash uchun    {student.company}  ga yubormoqda."
-    doc.paragraphs[7].text = f"Amaliyot muddati:     {start_parts['short']}-yildan,       {end_parts['short']} yilgacha"
-    doc.paragraphs[11].text = (
-        f"TATU dan ketdi  “{start_parts['day']}” {start_parts['month']} {start_parts['year']}-yil                              "
-        f"Korxonaga keldi “{start_parts['day']}” {start_parts['month']} {start_parts['year']}-yil"
-    )
-    doc.paragraphs[12].text = f"Fakultet dekani  {student.faculty_dean}                                               Korxona rahbari  {student.company_director}"
-    doc.paragraphs[17].text = (
-        f"Korxonadan ketdi “{end_parts['day']}”  {end_parts['month']} {end_parts['year']}-yil                               "
-        f"TATU ga keldi  “{end_parts['day']}” {end_parts['month']} {end_parts['year']}-yil"
-    )
-    doc.paragraphs[19].text = f"Korxona rahbari  {student.company_director}                                            Fakultet dekani  {student.faculty_dean}"
-    doc.paragraphs[27].text = f"{student.full_name}    {student.company}   ga  amaliyotga keldi."
-    doc.paragraphs[28].text = "Texnika xavfsizligi bo'yicha sinovni   “5”    bahoga topshirdi va amaliyotni o'tashga ruxsat berildi."
-    doc.paragraphs[30].text = "Komissiya raisi  ____________    Amaliyot komissiyasi"
-    doc.paragraphs[35].text = f"Talaba  {student.full_name}   ishga qo'yildi Amaliyotchi"
-    doc.paragraphs[39].text = f"Korxonadan tayinlagan amaliyot rahbari     ____________    {student.company_director}"
-    return doc
-
-
-@login_required(login_url='login')
+@login_required(login_url="login")
 def profile_view(request):
     profile = ensure_profile(request.user)
-    return render(request, 'app_excel/profile.html', {
-        'user': request.user,
-        'profile': profile
-    })
+    return render(request, "app_excel/profile.html", {"user": request.user, "profile": profile})
 
 
-@login_required(login_url='login')
-def account_settings_view(request):
-    profile = ensure_profile(request.user)
-    if request.method == "POST":
-        current_password = request.POST.get("current_password", "")
-        new_password = request.POST.get("new_password", "")
-        confirm_password = request.POST.get("confirm_password", "")
-
-        if not request.user.check_password(current_password):
-            messages.error(request, "Joriy parol noto‘g‘ri.")
-        elif len(new_password) < 8:
-            messages.error(request, "Yangi parol kamida 8 ta belgidan iborat bo‘lishi kerak.")
-        elif new_password != confirm_password:
-            messages.error(request, "Yangi parollar bir-biriga mos emas.")
-        elif current_password == new_password:
-            messages.error(request, "Yangi parol joriy paroldan farq qilishi kerak.")
-        else:
-            request.user.set_password(new_password)
-            request.user.save()
-            update_session_auth_hash(request, request.user)
-            messages.success(request, "Parol muvaffaqiyatli yangilandi.")
-            return redirect("account_settings")
-
-    return render(request, 'app_excel/account_settings.html', {
-        'user': request.user,
-        'profile': profile,
-    })
-
-
-
-@login_required(login_url='login')
+@login_required(login_url="login")
 def account_settings_view(request):
     profile = ensure_profile(request.user)
     if request.method == "POST":
@@ -1383,1444 +1202,20 @@ def account_settings_view(request):
                 messages.success(request, "Parol muvaffaqiyatli yangilandi.")
                 return redirect("account_settings")
 
-    return render(request, 'app_excel/account_settings.html', {
-        'user': request.user,
-        'profile': profile,
-    })
-
-
-@api_view(['POST'])
-def custom_login_api(request):
-    username = request.data.get("username")
-    password = request.data.get("password")
-
-    user = authenticate(username=username, password=password)
-    if user:
-        token, created = Token.objects.get_or_create(user=user)
-        return Response({"token": token.key, "username": user.username})
-    return Response({"error": "Login yoki parol noto‘g‘ri"}, status=400)
-
+    return render(request, "app_excel/account_settings.html", {"user": request.user, "profile": profile})
 
 
 def handler403(request, exception=None):
     return render(request, "app_excel/errors/403.html", status=403)
 
+
 def handler404(request, exception=None):
     return render(request, "app_excel/errors/404.html", status=404)
+
 
 def handler500(request):
     return render(request, "app_excel/errors/500.html", status=500)
 
+
 def csrf_failure(request, reason=""):
-    return render(request, 'app_excel/403_csrf.html', status=403)
-
-
-def generate_kundalik_from_fixed_template(student, course, practice_type, start_date_str, end_date_str):
-    doc = build_manual_template_document("kundalik")
-    if doc is None:
-        return None
-
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    academic_year = f"{start_parts['year']}/{int(start_parts['year']) + 1}"
-    direction_label = student.direction or student.faculty
-
-    replacements = {
-        5: f"{direction_label} ta'lim yo'nalishi {course} - bosqich talabasi {student.full_name} ning {academic_year} o'quv yilidagi {practice_type.lower()}",
-        10: f"1.1. Amaliyot joyi va muddati {student.company}, {student.company_address} muddati: {start_parts['short']} dan   {end_parts['short']} gacha",
-        12: "Universitetdan",
-        14: "Korxonadan",
-        16: f"1.3. Talaba {student.full_name} ga \"{student.faculty}\" kafedrasidan berilgan individual topshiriqlar {practice_type.lower()} bo'yicha kundalik yuritish va hisobot tayyorlash.",
-        17: f"1.4. Amaliyotga keldi: {format_document_date(start_date_str)},  ketdi: {format_document_date(end_date_str)}",
-        56: "Korxonadan rahbar",
-        59: f"M.O'. \t\t{end_parts['year']}-yil       \"_____\"  ____________________",
-        63: "Universitetdan amaliyot rahbari",
-        65: "Kafedra mudiri",
-        67: f"{end_parts['year']}-yil \"____\" ___________",
-    }
-    for index, text in replacements.items():
-        if index < len(doc.paragraphs):
-            doc.paragraphs[index].text = text
-
-    if course == 3 and 25 < len(doc.paragraphs):
-        doc.paragraphs[25].text = "2.6. Amaliyot muddati 3-bosqichda o'quv reja asosida belgilanadi."
-
-    if 39 < len(doc.paragraphs):
-        set_paragraph_segments(
-            doc.paragraphs[39],
-            [
-                ("Universitetdan ", False),
-                ("____________ ", False),
-                (student.practice_supervisor, True),
-                (" ", False),
-                (format_document_date(start_date_str), True),
-            ],
-        )
-    if 40 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[40], [("Imzo", False, True), ("\t\t         ", False), ("F.I.Sh.", False, True)])
-    if 42 < len(doc.paragraphs):
-        set_paragraph_segments(
-            doc.paragraphs[42],
-            [
-                ("Korxonadan ", False),
-                ("____________ ", False),
-                (student.company_director, True),
-                (" ", False),
-                (format_document_date(end_date_str), True),
-            ],
-        )
-    if 43 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[43], [("Imzo", False, True), ("\t\t         ", False), ("F.I.Sh.", False, True)])
-    if 56 < len(doc.paragraphs):
-        set_paragraph_segments(
-            doc.paragraphs[56],
-            [
-                ("Korxonadan rahbar          ", False),
-                ("________________ ", False),
-                (student.company_director, True),
-            ],
-        )
-    if 57 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[57], [("imzo", False, True), ("                                                              ", False), ("F.I.Sh.", False, True)])
-    if 63 < len(doc.paragraphs):
-        set_paragraph_segments(
-            doc.paragraphs[63],
-            [
-                ("Universitetdan amaliyot rahbari      ", False),
-                ("_____________ ", False),
-                (student.practice_supervisor, True),
-            ],
-        )
-    if 64 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[64], [("imzo", False, True), ("                                                              ", False), ("F.I.Sh.", False, True)])
-    if 65 < len(doc.paragraphs):
-        set_paragraph_segments(
-            doc.paragraphs[65],
-            [
-                ("Kafedra mudiri                                ", False),
-                ("_____________ ", False),
-                (student.department_head, True),
-            ],
-        )
-    if 66 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[66], [("imzo", False, True), ("                                                              ", False), ("F.I.Sh.", False, True)])
-
-    normalize_document_formatting(doc)
-    return doc
-
-
-@login_required(login_url='login')
-def download_student_document(request, student_id, document_type):
-    student = get_object_or_404(Student, pk=student_id)
-    course = int(request.GET.get("course") or request.session.get("course") or 4)
-    practice_type = request.session.get("practice_type") or get_practice_type(course)
-    start_date_str = request.session.get("start_date", "2025-02-17")
-    end_date_str = request.session.get("end_date", "2025-04-26")
-
-    validation_issues = validate_students_for_documents([student], course, start_date_str, end_date_str)
-    if validation_issues:
-        issues_text = " ; ".join(validation_issues[:10])
-        return HttpResponse(f"Ma'lumotlarni to'ldiring. Hujjat yuklanmadi: {issues_text}", status=400)
-
-    if document_type == "shartnoma":
-        document = generate_shartnoma_document(student, course, practice_type, start_date_str, end_date_str)
-    elif document_type == "kundalik":
-        document = generate_kundalik_document(student, course, practice_type, start_date_str, end_date_str)
-    elif document_type == "yollanma":
-        document = generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str)
-    else:
-        return HttpResponse("Hujjat turi topilmadi.", status=404)
-
-    filename = f"{sanitize_filename(student.full_name)}_{document_type}.docx"
-    return save_document_response(document, filename)
-
-
-
-def generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str):
-    doc = build_manual_template_document("yollanma")
-    if doc is None:
-        return build_fallback_document("Yo'llanma", student, course, practice_type, start_date_str, end_date_str)
-
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    direction_label = student.direction or student.faculty
-
-    if 4 < len(doc.paragraphs):
-        doc.paragraphs[4].text = (
-            "Muxammad al-Xorazmiy nomidagi Toshkent axborot texnologiyalari universiteti O'zbekiston Respublikasi oliy va o'rta maxsus ta'lim vazirligi tomonidan tasdiqlangan "
-            "\"Oliy ta'lim muassasalari talabalarining malaka amaliyotini o'tash tartibi to'g'risidagi nizom\" va"
-        )
-    if 5 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[5], [(student.company, True)])
-        center_paragraph(doc.paragraphs[5], font_size_pt=11)
-    if 6 < len(doc.paragraphs):
-        doc.paragraphs[6].text = "hamda Muxammad al-Xorazmiy nomidagi TATU o'rtasidagi shartnoma asosida"
-    if 7 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[7], [(direction_label, True)])
-        center_paragraph(doc.paragraphs[7], font_size_pt=11)
-    if 8 < len(doc.paragraphs):
-        doc.paragraphs[8].text = ""
-    if 9 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[9], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[9], font_size_pt=11)
-    if 10 < len(doc.paragraphs):
-        doc.paragraphs[10].text = ""
-    if 12 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[12], [(student.company, True)])
-        center_paragraph(doc.paragraphs[12], font_size_pt=11)
-    if 13 < len(doc.paragraphs):
-        doc.paragraphs[13].text = ""
-    if 15 < len(doc.paragraphs):
-        doc.paragraphs[15].text = f"Amaliyot muddati:     {start_parts['short']}-yildan,       {end_parts['short']} yilgacha"
-    if 19 < len(doc.paragraphs):
-        doc.paragraphs[19].text = f"TATU dan ketdi: \"{start_parts['day']}\" {start_parts['month']} {start_parts['year']}-yil                              Korxonaga keldi: \"{start_parts['day']}\" {start_parts['month']} {start_parts['year']}-yil"
-    if 20 < len(doc.paragraphs):
-        doc.paragraphs[20].text = f"Fakultet dekani: _____________________ {student.faculty_dean}                                 Korxona rahbari: _____________________ {student.company_director}"
-    if 21 < len(doc.paragraphs):
-        doc.paragraphs[21].text = ""
-    if 26 < len(doc.paragraphs):
-        doc.paragraphs[26].text = f"Korxonadan ketdi: \"{end_parts['day']}\" {end_parts['month']} {end_parts['year']}-yil                               TATU ga keldi: \"{end_parts['day']}\" {end_parts['month']} {end_parts['year']}-yil"
-    if 28 < len(doc.paragraphs):
-        doc.paragraphs[28].text = f"Korxona rahbari: _____________________ {student.company_director}                                 Fakultet dekani: _____________________ {student.faculty_dean}"
-    if 29 < len(doc.paragraphs):
-        doc.paragraphs[29].text = ""
-    if 37 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[37], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[37], font_size_pt=11)
-    if 38 < len(doc.paragraphs):
-        doc.paragraphs[38].text = ""
-    if 39 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[39], [(student.company, True)])
-        center_paragraph(doc.paragraphs[39], font_size_pt=11)
-    if 40 < len(doc.paragraphs):
-        doc.paragraphs[40].text = ""
-    if 41 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[41], [("Texnika xavfsizligi bo'yicha sinovni \"", False), ("5", True), ("\" bahoga topshirdi va amaliyotni o'tashga ruxsat berildi.", False)])
-    if 44 < len(doc.paragraphs):
-        doc.paragraphs[44].text = f"Komissiya raisi       ____________    {student.practice_supervisor}"
-    if 45 < len(doc.paragraphs):
-        doc.paragraphs[45].text = ""
-    if 49 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[49], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[49], font_size_pt=11)
-    if 50 < len(doc.paragraphs):
-        doc.paragraphs[50].text = ""
-    if 52 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[52], [("Amaliyotchi", True)])
-        center_paragraph(doc.paragraphs[52], font_size_pt=11)
-    if 53 < len(doc.paragraphs):
-        doc.paragraphs[53].text = ""
-    if 59 < len(doc.paragraphs):
-        doc.paragraphs[59].text = f"Korxonadan tayinlagan amaliyot rahbari     ____________    {student.company_director}"
-
-    normalize_document_formatting(doc)
-    return doc
-
-
-def generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str):
-    doc = build_manual_template_document("yollanma")
-    if doc is None:
-        return build_fallback_document("Yo'llanma", student, course, practice_type, start_date_str, end_date_str)
-
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    direction_label = student.direction or student.faculty
-
-    if 4 < len(doc.paragraphs):
-        doc.paragraphs[4].text = (
-            "Muxammad al-Xorazmiy nomidagi Toshkent axborot texnologiyalari universiteti O'zbekiston Respublikasi oliy va o'rta maxsus ta'lim vazirligi tomonidan tasdiqlangan "
-            "\"Oliy ta'lim muassasalari talabalarining malaka amaliyotini o'tash tartibi to'g'risidagi nizom\" va"
-        )
-    if 5 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[5], [(student.company, True)])
-        center_paragraph(doc.paragraphs[5], font_size_pt=11)
-    if 6 < len(doc.paragraphs):
-        doc.paragraphs[6].text = "hamda Muxammad al-Xorazmiy nomidagi TATU o'rtasidagi shartnoma asosida"
-    if 7 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[7], [(direction_label, True)])
-        center_paragraph(doc.paragraphs[7], font_size_pt=11)
-    if 8 < len(doc.paragraphs):
-        doc.paragraphs[8].text = ""
-    if 9 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[9], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[9], font_size_pt=11)
-    if 10 < len(doc.paragraphs):
-        doc.paragraphs[10].text = ""
-    if 12 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[12], [(student.company, True)])
-        center_paragraph(doc.paragraphs[12], font_size_pt=11)
-    if 13 < len(doc.paragraphs):
-        doc.paragraphs[13].text = ""
-    if 15 < len(doc.paragraphs):
-        doc.paragraphs[15].text = f"Amaliyot muddati:     {start_parts['short']}-yildan,       {end_parts['short']} yilgacha"
-    if 19 < len(doc.paragraphs):
-        doc.paragraphs[19].text = f"TATU dan ketdi: \"{start_parts['day']}\" {start_parts['month']} {start_parts['year']}-yil                              Korxonaga keldi: \"{start_parts['day']}\" {start_parts['month']} {start_parts['year']}-yil"
-    if 20 < len(doc.paragraphs):
-        doc.paragraphs[20].text = f"Fakultet dekani: _____________________ {student.faculty_dean}                                 Korxona rahbari: _____________________ {student.company_director}"
-    if 21 < len(doc.paragraphs):
-        doc.paragraphs[21].text = ""
-    if 26 < len(doc.paragraphs):
-        doc.paragraphs[26].text = f"Korxonadan ketdi: \"{end_parts['day']}\" {end_parts['month']} {end_parts['year']}-yil                               TATU ga keldi: \"{end_parts['day']}\" {end_parts['month']} {end_parts['year']}-yil"
-    if 28 < len(doc.paragraphs):
-        doc.paragraphs[28].text = f"Korxona rahbari: _____________________ {student.company_director}                                 Fakultet dekani: _____________________ {student.faculty_dean}"
-    if 29 < len(doc.paragraphs):
-        doc.paragraphs[29].text = ""
-    if 37 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[37], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[37], font_size_pt=11)
-    if 38 < len(doc.paragraphs):
-        doc.paragraphs[38].text = ""
-    if 39 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[39], [(student.company, True)])
-        center_paragraph(doc.paragraphs[39], font_size_pt=11)
-    if 40 < len(doc.paragraphs):
-        doc.paragraphs[40].text = ""
-    if 41 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[41], [("Texnika xavfsizligi bo'yicha sinovni \"", False), ("5", True), ("\" bahoga topshirdi va amaliyotni o'tashga ruxsat berildi.", False)])
-    if 44 < len(doc.paragraphs):
-        doc.paragraphs[44].text = f"Komissiya raisi       ____________    {student.practice_supervisor}"
-    if 45 < len(doc.paragraphs):
-        doc.paragraphs[45].text = ""
-    if 49 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[49], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[49], font_size_pt=11)
-    if 50 < len(doc.paragraphs):
-        doc.paragraphs[50].text = ""
-    if 52 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[52], [("Amaliyotchi", True)])
-        center_paragraph(doc.paragraphs[52], font_size_pt=11)
-    if 53 < len(doc.paragraphs):
-        doc.paragraphs[53].text = ""
-    if 59 < len(doc.paragraphs):
-        doc.paragraphs[59].text = f"Korxonadan tayinlagan amaliyot rahbari     ____________    {student.company_director}"
-
-    normalize_document_formatting(doc)
-    return doc
-
-def generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str):
-    doc = build_manual_template_document("yollanma")
-    if doc is None:
-        return build_fallback_document("Yo'llanma", student, course, practice_type, start_date_str, end_date_str)
-
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    direction_label = student.direction or student.faculty
-
-    if 4 < len(doc.paragraphs):
-        doc.paragraphs[4].text = (
-            "Muxammad al-Xorazmiy nomidagi Toshkent axborot texnologiyalari universiteti O'zbekiston Respublikasi oliy va o'rta maxsus ta'lim vazirligi tomonidan tasdiqlangan "
-            "\"Oliy ta'lim muassasalari talabalarining malaka amaliyotini o'tash tartibi to'g'risidagi nizom\" va"
-        )
-    if 5 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[5], [(student.company, True)])
-        center_paragraph(doc.paragraphs[5], font_size_pt=11)
-    if 6 < len(doc.paragraphs):
-        doc.paragraphs[6].text = "hamda Muxammad al-Xorazmiy nomidagi TATU o'rtasidagi shartnoma asosida"
-    if 7 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[7], [(direction_label, True)])
-        center_paragraph(doc.paragraphs[7], font_size_pt=11)
-    if 8 < len(doc.paragraphs):
-        doc.paragraphs[8].text = ""
-    if 9 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[9], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[9], font_size_pt=11)
-    if 10 < len(doc.paragraphs):
-        doc.paragraphs[10].text = ""
-    if 12 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[12], [(student.company, True)])
-        center_paragraph(doc.paragraphs[12], font_size_pt=11)
-    if 13 < len(doc.paragraphs):
-        doc.paragraphs[13].text = ""
-    if 15 < len(doc.paragraphs):
-        doc.paragraphs[15].text = f"Amaliyot muddati:     {start_parts['short']}-yildan,       {end_parts['short']} yilgacha"
-    if 19 < len(doc.paragraphs):
-        doc.paragraphs[19].text = f"TATU dan ketdi: \"{start_parts['day']}\" {start_parts['month']} {start_parts['year']}-yil                              Korxonaga keldi: \"{start_parts['day']}\" {start_parts['month']} {start_parts['year']}-yil"
-    if 20 < len(doc.paragraphs):
-        doc.paragraphs[20].text = f"Fakultet dekani: _____________________ {student.faculty_dean}                                 Korxona rahbari: _____________________ {student.company_director}"
-    if 21 < len(doc.paragraphs):
-        doc.paragraphs[21].text = ""
-    if 26 < len(doc.paragraphs):
-        doc.paragraphs[26].text = f"Korxonadan ketdi: \"{end_parts['day']}\" {end_parts['month']} {end_parts['year']}-yil                               TATU ga keldi: \"{end_parts['day']}\" {end_parts['month']} {end_parts['year']}-yil"
-    if 28 < len(doc.paragraphs):
-        doc.paragraphs[28].text = f"Korxona rahbari: _____________________ {student.company_director}                                 Fakultet dekani: _____________________ {student.faculty_dean}"
-    if 29 < len(doc.paragraphs):
-        doc.paragraphs[29].text = ""
-    if 37 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[37], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[37], font_size_pt=11)
-    if 38 < len(doc.paragraphs):
-        doc.paragraphs[38].text = ""
-    if 39 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[39], [(student.company, True)])
-        center_paragraph(doc.paragraphs[39], font_size_pt=11)
-    if 40 < len(doc.paragraphs):
-        doc.paragraphs[40].text = ""
-    if 41 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[41], [("Texnika xavfsizligi bo'yicha sinovni \"", False), ("5", True), ("\" bahoga topshirdi va amaliyotni o'tashga ruxsat berildi.", False)])
-    if 44 < len(doc.paragraphs):
-        doc.paragraphs[44].text = f"Komissiya raisi       ____________    {student.practice_supervisor}"
-    if 45 < len(doc.paragraphs):
-        doc.paragraphs[45].text = ""
-    if 49 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[49], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[49], font_size_pt=11)
-    if 50 < len(doc.paragraphs):
-        doc.paragraphs[50].text = ""
-    if 52 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[52], [("Amaliyotchi", True)])
-        center_paragraph(doc.paragraphs[52], font_size_pt=11)
-    if 53 < len(doc.paragraphs):
-        doc.paragraphs[53].text = ""
-    if 59 < len(doc.paragraphs):
-        doc.paragraphs[59].text = f"Korxonadan tayinlagan amaliyot rahbari     ____________    {student.company_director}"
-
-    normalize_document_formatting(doc)
-    return doc
-
-
-def generate_kundalik_document(student, course, practice_type, start_date_str, end_date_str):
-    doc = build_manual_template_document("kundalik")
-    if doc is None:
-        return build_fallback_document("Kundalik", student, course, practice_type, start_date_str, end_date_str)
-
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    academic_year = f"{start_parts['year']}/{int(start_parts['year']) + 1}"
-    direction_label = student.direction or student.faculty
-
-    if 5 < len(doc.paragraphs):
-        doc.paragraphs[5].text = (
-            f"{direction_label} ta'lim yo'nalishi {course} - bosqich talabasi "
-            f"{student.full_name} ning {academic_year} o'quv yilidagi {practice_type.lower()}"
-        )
-    if 10 < len(doc.paragraphs):
-        doc.paragraphs[10].text = (
-            f"1.1. Amaliyot joyi va muddati {student.company}, {student.company_address} "
-            f"muddati: {start_parts['short']} dan {end_parts['short']} gacha"
-        )
-    if 12 < len(doc.paragraphs):
-        set_paragraph_segments(
-            doc.paragraphs[12],
-            [("Universitetdan ", False), (student.practice_supervisor, True)],
-        )
-    if 13 < len(doc.paragraphs):
-        doc.paragraphs[13].text = ""
-    if 14 < len(doc.paragraphs):
-        set_paragraph_segments(
-            doc.paragraphs[14],
-            [("Korxonadan ", False), (student.company_director, True)],
-        )
-    if 15 < len(doc.paragraphs):
-        doc.paragraphs[15].text = ""
-    if 16 < len(doc.paragraphs):
-        doc.paragraphs[16].text = (
-            f"1.3. Talaba {student.full_name} ga \"{student.faculty}\" kafedrasidan berilgan "
-            f"individual topshiriqlar {practice_type.lower()} bo'yicha kundalik yuritish va hisobot tayyorlash."
-        )
-    if 17 < len(doc.paragraphs):
-        doc.paragraphs[17].text = (
-            f"1.4. Amaliyotga keldi: {format_document_date(start_date_str)}, "
-            f"ketdi: {format_document_date(end_date_str)}"
-        )
-    if course == 3 and 25 < len(doc.paragraphs):
-        doc.paragraphs[25].text = "2.6. Amaliyot muddati 3-bosqichda o'quv reja asosida belgilanadi."
-    if 39 < len(doc.paragraphs):
-        set_paragraph_segments(
-            doc.paragraphs[39],
-            [
-                ("Universitetdan ", False),
-                ("__________ ", False),
-                (student.practice_supervisor, True),
-                (" ", False),
-                (format_document_date(start_date_str), True),
-            ],
-        )
-    if 40 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[40], [("Imzo", False, True), ("\t\t", False), ("F.I.Sh.", False, True)])
-    if 42 < len(doc.paragraphs):
-        set_paragraph_segments(
-            doc.paragraphs[42],
-            [
-                ("Korxonadan ", False),
-                ("__________ ", False),
-                (student.company_director, True),
-                (" ", False),
-                (format_document_date(end_date_str), True),
-            ],
-        )
-    if 43 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[43], [("Imzo", False, True), ("\t\t", False), ("F.I.Sh.", False, True)])
-    if 56 < len(doc.paragraphs):
-        set_paragraph_segments(
-            doc.paragraphs[56],
-            [("Korxonadan rahbar          ", False), ("____________ ", False), (student.company_director, True)],
-        )
-    if 57 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[57], [("imzo", False, True), ("                                                              ", False), ("F.I.Sh.", False, True)])
-    if 63 < len(doc.paragraphs):
-        set_paragraph_segments(
-            doc.paragraphs[63],
-            [("Universitetdan amaliyot rahbari      ", False), ("____________ ", False), (student.practice_supervisor, True)],
-        )
-    if 64 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[64], [("imzo", False, True), ("                                                              ", False), ("F.I.Sh.", False, True)])
-    if 65 < len(doc.paragraphs):
-        set_paragraph_segments(
-            doc.paragraphs[65],
-            [("Kafedra mudiri                                ", False), ("____________ ", False), (student.department_head, True)],
-        )
-    if 66 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[66], [("imzo", False, True), ("                                                              ", False), ("F.I.Sh.", False, True)])
-
-    normalize_document_formatting(doc)
-    return doc
-
-
-def generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str):
-    doc = build_manual_template_document("yollanma")
-    if doc is None:
-        return build_fallback_document("Yo'llanma", student, course, practice_type, start_date_str, end_date_str)
-
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    direction_label = student.direction or student.faculty
-
-    if 4 < len(doc.paragraphs):
-        doc.paragraphs[4].text = (
-            "Muxammad al-Xorazmiy nomidagi Toshkent axborot texnologiyalari universiteti O'zbekiston Respublikasi oliy va o'rta maxsus ta'lim vazirligi tomonidan tasdiqlangan "
-            "\"Oliy ta'lim muassasalari talabalarining malaka amaliyotini o'tash tartibi to'g'risidagi nizom\" va"
-        )
-    if 5 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[5], [(student.company, True)])
-        center_paragraph(doc.paragraphs[5], font_size_pt=11)
-    if 6 < len(doc.paragraphs):
-        doc.paragraphs[6].text = "hamda Muxammad al-Xorazmiy nomidagi TATU o'rtasidagi shartnoma asosida"
-    if 7 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[7], [(direction_label, True)])
-        center_paragraph(doc.paragraphs[7], font_size_pt=11)
-    if 8 < len(doc.paragraphs):
-        doc.paragraphs[8].text = ""
-    if 9 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[9], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[9], font_size_pt=11)
-    if 10 < len(doc.paragraphs):
-        doc.paragraphs[10].text = ""
-    if 12 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[12], [(student.company, True)])
-        center_paragraph(doc.paragraphs[12], font_size_pt=11)
-    if 13 < len(doc.paragraphs):
-        doc.paragraphs[13].text = ""
-    if 15 < len(doc.paragraphs):
-        doc.paragraphs[15].text = f"Amaliyot muddati:     {start_parts['short']}-yildan,       {end_parts['short']} yilgacha"
-    if 19 < len(doc.paragraphs):
-        doc.paragraphs[19].text = f"TATU dan ketdi: \"{start_parts['day']}\" {start_parts['month']} {start_parts['year']}-yil                              Korxonaga keldi: \"{start_parts['day']}\" {start_parts['month']} {start_parts['year']}-yil"
-    if 20 < len(doc.paragraphs):
-        doc.paragraphs[20].text = f"Fakultet dekani: _____________________ {student.faculty_dean}                                 Korxona rahbari: _____________________ {student.company_director}"
-    if 21 < len(doc.paragraphs):
-        doc.paragraphs[21].text = ""
-    if 26 < len(doc.paragraphs):
-        doc.paragraphs[26].text = f"Korxonadan ketdi: \"{end_parts['day']}\" {end_parts['month']} {end_parts['year']}-yil                               TATU ga keldi: \"{end_parts['day']}\" {end_parts['month']} {end_parts['year']}-yil"
-    if 28 < len(doc.paragraphs):
-        doc.paragraphs[28].text = f"Korxona rahbari: _____________________ {student.company_director}                                 Fakultet dekani: _____________________ {student.faculty_dean}"
-    if 29 < len(doc.paragraphs):
-        doc.paragraphs[29].text = ""
-    if 37 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[37], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[37], font_size_pt=11)
-    if 38 < len(doc.paragraphs):
-        doc.paragraphs[38].text = ""
-    if 39 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[39], [(student.company, True)])
-        center_paragraph(doc.paragraphs[39], font_size_pt=11)
-    if 40 < len(doc.paragraphs):
-        doc.paragraphs[40].text = ""
-    if 41 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[41], [("Texnika xavfsizligi bo'yicha sinovni \"", False), ("5", True), ("\" bahoga topshirdi va amaliyotni o'tashga ruxsat berildi.", False)])
-    if 44 < len(doc.paragraphs):
-        doc.paragraphs[44].text = f"Komissiya raisi       ____________    {student.practice_supervisor}"
-    if 45 < len(doc.paragraphs):
-        doc.paragraphs[45].text = ""
-    if 49 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[49], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[49], font_size_pt=11)
-    if 50 < len(doc.paragraphs):
-        doc.paragraphs[50].text = ""
-    if 52 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[52], [("Amaliyotchi", True)])
-        center_paragraph(doc.paragraphs[52], font_size_pt=11)
-    if 53 < len(doc.paragraphs):
-        doc.paragraphs[53].text = ""
-    if 59 < len(doc.paragraphs):
-        doc.paragraphs[59].text = f"Korxonadan tayinlagan amaliyot rahbari     ____________    {student.company_director}"
-
-    normalize_document_formatting(doc)
-    return doc
-
-
-def generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str):
-    doc = build_manual_template_document("yollanma")
-    if doc is None:
-        return build_fallback_document("Yo'llanma", student, course, practice_type, start_date_str, end_date_str)
-
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    direction_label = student.direction or student.faculty
-
-    if 4 < len(doc.paragraphs):
-        doc.paragraphs[4].text = (
-            "Muxammad al-Xorazmiy nomidagi Toshkent axborot texnologiyalari universiteti O'zbekiston Respublikasi oliy va o'rta maxsus ta'lim vazirligi tomonidan tasdiqlangan "
-            "\"Oliy ta'lim muassasalari talabalarining malaka amaliyotini o'tash tartibi to'g'risidagi nizom\" va"
-        )
-    if 5 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[5], [(student.company, True)])
-        center_paragraph(doc.paragraphs[5], font_size_pt=11)
-    if 6 < len(doc.paragraphs):
-        doc.paragraphs[6].text = "hamda Muxammad al-Xorazmiy nomidagi TATU o'rtasidagi shartnoma asosida"
-    if 7 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[7], [(direction_label, True)])
-        center_paragraph(doc.paragraphs[7], font_size_pt=11)
-    if 8 < len(doc.paragraphs):
-        doc.paragraphs[8].text = ""
-    if 9 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[9], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[9], font_size_pt=11)
-    if 10 < len(doc.paragraphs):
-        doc.paragraphs[10].text = ""
-    if 12 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[12], [(student.company, True)])
-        center_paragraph(doc.paragraphs[12], font_size_pt=11)
-    if 13 < len(doc.paragraphs):
-        doc.paragraphs[13].text = ""
-    if 15 < len(doc.paragraphs):
-        doc.paragraphs[15].text = f"Amaliyot muddati:     {start_parts['short']}-yildan,       {end_parts['short']} yilgacha"
-    if 19 < len(doc.paragraphs):
-        doc.paragraphs[19].text = f"TATU dan ketdi: \"{start_parts['day']}\" {start_parts['month']} {start_parts['year']}-yil                              Korxonaga keldi: \"{start_parts['day']}\" {start_parts['month']} {start_parts['year']}-yil"
-    if 20 < len(doc.paragraphs):
-        doc.paragraphs[20].text = f"Fakultet dekani: _____________________ {student.faculty_dean}                                 Korxona rahbari: _____________________ {student.company_director}"
-    if 21 < len(doc.paragraphs):
-        doc.paragraphs[21].text = ""
-    if 26 < len(doc.paragraphs):
-        doc.paragraphs[26].text = f"Korxonadan ketdi: \"{end_parts['day']}\" {end_parts['month']} {end_parts['year']}-yil                               TATU ga keldi: \"{end_parts['day']}\" {end_parts['month']} {end_parts['year']}-yil"
-    if 28 < len(doc.paragraphs):
-        doc.paragraphs[28].text = f"Korxona rahbari: _____________________ {student.company_director}                                 Fakultet dekani: _____________________ {student.faculty_dean}"
-    if 29 < len(doc.paragraphs):
-        doc.paragraphs[29].text = ""
-    if 37 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[37], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[37], font_size_pt=11)
-    if 38 < len(doc.paragraphs):
-        doc.paragraphs[38].text = ""
-    if 39 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[39], [(student.company, True)])
-        center_paragraph(doc.paragraphs[39], font_size_pt=11)
-    if 40 < len(doc.paragraphs):
-        doc.paragraphs[40].text = ""
-    if 41 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[41], [("Texnika xavfsizligi bo'yicha sinovni \"", False), ("5", True), ("\" bahoga topshirdi va amaliyotni o'tashga ruxsat berildi.", False)])
-    if 44 < len(doc.paragraphs):
-        doc.paragraphs[44].text = f"Komissiya raisi       ____________    {student.practice_supervisor}"
-    if 45 < len(doc.paragraphs):
-        doc.paragraphs[45].text = ""
-    if 49 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[49], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[49], font_size_pt=11)
-    if 50 < len(doc.paragraphs):
-        doc.paragraphs[50].text = ""
-    if 52 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[52], [("Amaliyotchi", True)])
-        center_paragraph(doc.paragraphs[52], font_size_pt=11)
-    if 53 < len(doc.paragraphs):
-        doc.paragraphs[53].text = ""
-    if 59 < len(doc.paragraphs):
-        doc.paragraphs[59].text = f"Korxonadan tayinlagan amaliyot rahbari     ____________    {student.company_director}"
-
-    normalize_document_formatting(doc)
-    return doc
-
-
-def generate_shartnoma_document(student, course, practice_type, start_date_str, end_date_str):
-    doc = build_manual_template_document("shartnoma")
-    if doc is None:
-        return build_fallback_document("Shartnoma", student, course, practice_type, start_date_str, end_date_str)
-
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    company_count = get_company_student_count(student.company)
-
-    if len(doc.paragraphs) > 9:
-        doc.paragraphs[0].text = f"TALABALARNING {practice_type.upper()}NI TASHKIL ETISH BO'YICHA SHARTNOMA"
-        doc.paragraphs[3].text = f"Toshkent sh.                                                                 {start_parts['year']}-yil \"{start_parts['day']}\" {start_parts['month']}"
-        doc.paragraphs[6].text = student.company
-        doc.paragraphs[9].text = student.company_director
-
-    if len(doc.tables) >= 2:
-        main_table = doc.tables[0]
-        if len(main_table.rows) > 2 and len(main_table.rows[2].cells) >= 7:
-            row = main_table.rows[2].cells
-            row[1].text = student.direction or student.faculty
-            row[2].text = str(course)
-            row[3].text = practice_type
-            row[4].text = str(company_count)
-            row[5].text = start_parts["short"]
-            row[6].text = end_parts["short"]
-            for cell, size in zip(row, (10, 9, 10, 9, 10, 9, 9)):
-                style_cell(cell, horizontal=WD_ALIGN_PARAGRAPH.CENTER, font_size_pt=size)
-
-        info_table = doc.tables[1]
-        if len(info_table.rows) > 4 and len(info_table.rows[0].cells) >= 3:
-            contact_block = f"{student.company_address}\nTel.: {student.company_phone}"
-            info_table.rows[0].cells[1].text = contact_block
-            style_cell(info_table.rows[0].cells[1], horizontal=WD_ALIGN_PARAGRAPH.CENTER, font_size_pt=10)
-
-            info_table.rows[4].cells[1].text = (
-                f"Fakultet dekani: ____________ {student.faculty_dean}\n"
-                "(imzo)                                (F.I.Sh.)"
-            )
-            info_table.rows[4].cells[2].text = (
-                "Korxonadan ajratilgan\n"
-                f"amaliyot rahbari: ____________ {student.company_director}\n"
-                "(imzo)                      (F.I.Sh.)"
-            )
-            style_cell(info_table.rows[4].cells[1], horizontal=WD_ALIGN_PARAGRAPH.CENTER, font_size_pt=10)
-            style_cell(info_table.rows[4].cells[2], horizontal=WD_ALIGN_PARAGRAPH.CENTER, font_size_pt=10)
-
-    normalize_document_formatting(doc)
-    return doc
-
-
-def generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str):
-    doc = build_manual_template_document("yollanma")
-    if doc is None:
-        return build_fallback_document("Yo'llanma", student, course, practice_type, start_date_str, end_date_str)
-
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    direction_label = student.direction or student.faculty
-
-    if 4 < len(doc.paragraphs):
-        doc.paragraphs[4].text = (
-            "Muxammad al-Xorazmiy nomidagi Toshkent axborot texnologiyalari universiteti O'zbekiston Respublikasi oliy va o'rta maxsus ta'lim vazirligi tomonidan tasdiqlangan "
-            "“Oliy ta'lim muassasalari talabalarining malaka amaliyotini o'tash tartibi to'g'risidagi nizom” va"
-        )
-    if 5 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[5], [(student.company, True)])
-        center_paragraph(doc.paragraphs[5], font_size_pt=11)
-    if 6 < len(doc.paragraphs):
-        doc.paragraphs[6].text = "hamda Muxammad al-Xorazmiy nomidagi TATU o'rtasidagi shartnoma asosida"
-    if 7 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[7], [(direction_label, True), (" ta'lim yo'nalishida tahsil olayotgan talaba", False)])
-    if 8 < len(doc.paragraphs):
-        doc.paragraphs[8].text = ""
-    if 9 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[9], [(student.full_name, True), (f" {practice_type.lower()}ni o'tash uchun", False)])
-    if 10 < len(doc.paragraphs):
-        doc.paragraphs[10].text = ""
-    if 12 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[12], [(student.company, True), (" ga yubormoqda.", False)])
-    if 13 < len(doc.paragraphs):
-        doc.paragraphs[13].text = ""
-    if 15 < len(doc.paragraphs):
-        doc.paragraphs[15].text = f"Amaliyot muddati:     {start_parts['short']}-yildan,       {end_parts['short']} yilgacha"
-    if 19 < len(doc.paragraphs):
-        doc.paragraphs[19].text = f"TATU dan ketdi: \"{start_parts['day']}\" {start_parts['month']} {start_parts['year']}-yil                              Korxonaga keldi: \"{start_parts['day']}\" {start_parts['month']} {start_parts['year']}-yil"
-    if 20 < len(doc.paragraphs):
-        doc.paragraphs[20].text = f"Fakultet dekani: _____________________ {student.faculty_dean}                                 Korxona rahbari: _____________________ {student.company_director}"
-    if 21 < len(doc.paragraphs):
-        doc.paragraphs[21].text = ""
-    if 26 < len(doc.paragraphs):
-        doc.paragraphs[26].text = f"Korxonadan ketdi: \"{end_parts['day']}\" {end_parts['month']} {end_parts['year']}-yil                               TATU ga keldi: \"{end_parts['day']}\" {end_parts['month']} {end_parts['year']}-yil"
-    if 28 < len(doc.paragraphs):
-        doc.paragraphs[28].text = f"Korxona rahbari: _____________________ {student.company_director}                                 Fakultet dekani: _____________________ {student.faculty_dean}"
-    if 29 < len(doc.paragraphs):
-        doc.paragraphs[29].text = ""
-    if 37 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[37], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[37], font_size_pt=11)
-    if 38 < len(doc.paragraphs):
-        doc.paragraphs[38].text = ""
-    if 39 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[39], [(student.company, True), (" ga amaliyotga keldi.", False)])
-    if 40 < len(doc.paragraphs):
-        doc.paragraphs[40].text = ""
-    if 41 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[41], [("Texnika xavfsizligi bo'yicha sinovni “", False), ("5", True), ("” bahoga topshirdi va amaliyotni o'tashga ruxsat berildi.", False)])
-    if 44 < len(doc.paragraphs):
-        doc.paragraphs[44].text = f"Komissiya raisi       ____________    {student.practice_supervisor}"
-    if 45 < len(doc.paragraphs):
-        doc.paragraphs[45].text = ""
-    if 49 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[49], [("Talaba ", False), (student.full_name, True)])
-    if 50 < len(doc.paragraphs):
-        doc.paragraphs[50].text = ""
-    if 52 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[52], [("ishga qo'yildi ", False), ("Amaliyotchi", True)])
-    if 53 < len(doc.paragraphs):
-        doc.paragraphs[53].text = ""
-    if 59 < len(doc.paragraphs):
-        doc.paragraphs[59].text = f"Korxonadan tayinlagan amaliyot rahbari     ____________    {student.company_director}"
-
-    normalize_document_formatting(doc)
-    return doc
-
-
-def generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str):
-    doc = build_manual_template_document("yollanma")
-    if doc is None:
-        return build_fallback_document("Yo'llanma", student, course, practice_type, start_date_str, end_date_str)
-
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    direction_label = student.direction or student.faculty
-
-    if 4 < len(doc.paragraphs):
-        doc.paragraphs[4].text = (
-            "Muxammad al-Xorazmiy nomidagi Toshkent axborot texnologiyalari universiteti O'zbekiston Respublikasi oliy va o'rta maxsus ta'lim vazirligi tomonidan tasdiqlangan "
-            "\"Oliy ta'lim muassasalari talabalarining malaka amaliyotini o'tash tartibi to'g'risidagi nizom\" va"
-        )
-    if 5 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[5], [(student.company, True)])
-        center_paragraph(doc.paragraphs[5], font_size_pt=11)
-    if 6 < len(doc.paragraphs):
-        doc.paragraphs[6].text = "hamda Muxammad al-Xorazmiy nomidagi TATU o'rtasidagi shartnoma asosida"
-    if 7 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[7], [(direction_label, True)])
-        center_paragraph(doc.paragraphs[7], font_size_pt=11)
-    if 8 < len(doc.paragraphs):
-        doc.paragraphs[8].text = ""
-    if 9 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[9], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[9], font_size_pt=11)
-    if 10 < len(doc.paragraphs):
-        doc.paragraphs[10].text = ""
-    if 12 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[12], [(student.company, True)])
-        center_paragraph(doc.paragraphs[12], font_size_pt=11)
-    if 13 < len(doc.paragraphs):
-        doc.paragraphs[13].text = ""
-    if 15 < len(doc.paragraphs):
-        doc.paragraphs[15].text = f"Amaliyot muddati:     {start_parts['short']}-yildan,       {end_parts['short']} yilgacha"
-    if 19 < len(doc.paragraphs):
-        doc.paragraphs[19].text = f"TATU dan ketdi: \"{start_parts['day']}\" {start_parts['month']} {start_parts['year']}-yil                              Korxonaga keldi: \"{start_parts['day']}\" {start_parts['month']} {start_parts['year']}-yil"
-    if 20 < len(doc.paragraphs):
-        doc.paragraphs[20].text = f"Fakultet dekani: _____________________ {student.faculty_dean}                                 Korxona rahbari: _____________________ {student.company_director}"
-    if 21 < len(doc.paragraphs):
-        doc.paragraphs[21].text = ""
-    if 26 < len(doc.paragraphs):
-        doc.paragraphs[26].text = f"Korxonadan ketdi: \"{end_parts['day']}\" {end_parts['month']} {end_parts['year']}-yil                               TATU ga keldi: \"{end_parts['day']}\" {end_parts['month']} {end_parts['year']}-yil"
-    if 28 < len(doc.paragraphs):
-        doc.paragraphs[28].text = f"Korxona rahbari: _____________________ {student.company_director}                                 Fakultet dekani: _____________________ {student.faculty_dean}"
-    if 29 < len(doc.paragraphs):
-        doc.paragraphs[29].text = ""
-    if 37 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[37], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[37], font_size_pt=11)
-    if 38 < len(doc.paragraphs):
-        doc.paragraphs[38].text = ""
-    if 39 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[39], [(student.company, True)])
-        center_paragraph(doc.paragraphs[39], font_size_pt=11)
-    if 40 < len(doc.paragraphs):
-        doc.paragraphs[40].text = ""
-    if 41 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[41], [("Texnika xavfsizligi bo'yicha sinovni \"", False), ("5", True), ("\" bahoga topshirdi va amaliyotni o'tashga ruxsat berildi.", False)])
-    if 44 < len(doc.paragraphs):
-        doc.paragraphs[44].text = f"Komissiya raisi       ____________    {student.practice_supervisor}"
-    if 45 < len(doc.paragraphs):
-        doc.paragraphs[45].text = ""
-    if 49 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[49], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[49], font_size_pt=11)
-    if 50 < len(doc.paragraphs):
-        doc.paragraphs[50].text = ""
-    if 52 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[52], [("Amaliyotchi", True)])
-        center_paragraph(doc.paragraphs[52], font_size_pt=11)
-    if 53 < len(doc.paragraphs):
-        doc.paragraphs[53].text = ""
-    if 59 < len(doc.paragraphs):
-        doc.paragraphs[59].text = f"Korxonadan tayinlagan amaliyot rahbari     ____________    {student.company_director}"
-
-    normalize_document_formatting(doc)
-    return doc
-
-
-def generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str):
-    doc = build_manual_template_document("yollanma")
-    if doc is None:
-        return build_fallback_document("Yo'llanma", student, course, practice_type, start_date_str, end_date_str)
-
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    direction_label = student.direction or student.faculty
-
-    if 4 < len(doc.paragraphs):
-        doc.paragraphs[4].text = (
-            "Muxammad al-Xorazmiy nomidagi Toshkent axborot texnologiyalari universiteti O'zbekiston Respublikasi "
-            "oliy va o'rta maxsus ta'lim vazirligi tomonidan tasdiqlangan “Oliy ta'lim muassasalari talabalarining "
-            "malaka amaliyotini o'tash tartibi to'g'risidagi nizom” va"
-        )
-    if 5 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[5], [(student.company, True)])
-        center_paragraph(doc.paragraphs[5], font_size_pt=11)
-    if 6 < len(doc.paragraphs):
-        doc.paragraphs[6].text = "hamda Muxammad al-Xorazmiy nomidagi TATU o'rtasidagi shartnoma asosida"
-    if 7 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[7], [(direction_label, True), (" ta'lim yo'nalishida tahsil olayotgan talaba", False)])
-    if 8 < len(doc.paragraphs):
-        doc.paragraphs[8].text = ""
-    if 9 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[9], [(student.full_name, True), (f" {practice_type.lower()}ni o'tash uchun", False)])
-    if 10 < len(doc.paragraphs):
-        doc.paragraphs[10].text = ""
-    if 12 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[12], [(student.company, True), (" ga yubormoqda.", False)])
-    if 13 < len(doc.paragraphs):
-        doc.paragraphs[13].text = ""
-    if 15 < len(doc.paragraphs):
-        doc.paragraphs[15].text = f"Amaliyot muddati:     {start_parts['short']}-yildan,       {end_parts['short']} yilgacha"
-    if 19 < len(doc.paragraphs):
-        doc.paragraphs[19].text = f"TATU dan ketdi: \"{start_parts['day']}\" {start_parts['month']} {start_parts['year']}-yil                              Korxonaga keldi: \"{start_parts['day']}\" {start_parts['month']} {start_parts['year']}-yil"
-    if 20 < len(doc.paragraphs):
-        doc.paragraphs[20].text = f"Fakultet dekani: _____________________ {student.faculty_dean}                                 Korxona rahbari: _____________________ {student.company_director}"
-    if 21 < len(doc.paragraphs):
-        doc.paragraphs[21].text = ""
-    if 26 < len(doc.paragraphs):
-        doc.paragraphs[26].text = f"Korxonadan ketdi: \"{end_parts['day']}\" {end_parts['month']} {end_parts['year']}-yil                               TATU ga keldi: \"{end_parts['day']}\" {end_parts['month']} {end_parts['year']}-yil"
-    if 28 < len(doc.paragraphs):
-        doc.paragraphs[28].text = f"Korxona rahbari: _____________________ {student.company_director}                                 Fakultet dekani: _____________________ {student.faculty_dean}"
-    if 29 < len(doc.paragraphs):
-        doc.paragraphs[29].text = ""
-    if 37 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[37], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[37], font_size_pt=11)
-    if 38 < len(doc.paragraphs):
-        doc.paragraphs[38].text = ""
-    if 39 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[39], [(student.company, True), (" ga  amaliyotga keldi.", False)])
-    if 40 < len(doc.paragraphs):
-        doc.paragraphs[40].text = ""
-    if 41 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[41], [("Texnika xavfsizligi bo'yicha sinovni “", False), ("5", True), ("” bahoga topshirdi va amaliyotni o'tashga ruxsat berildi.", False)])
-    if 44 < len(doc.paragraphs):
-        doc.paragraphs[44].text = f"Komissiya raisi       ____________    {student.practice_supervisor}"
-    if 45 < len(doc.paragraphs):
-        doc.paragraphs[45].text = ""
-    if 49 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[49], [("Talaba ", False), (student.full_name, True)])
-    if 50 < len(doc.paragraphs):
-        doc.paragraphs[50].text = ""
-    if 52 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[52], [("ishga qo'yildi ", False), ("Amaliyotchi", True)])
-    if 53 < len(doc.paragraphs):
-        doc.paragraphs[53].text = ""
-    if 59 < len(doc.paragraphs):
-        doc.paragraphs[59].text = f"Korxonadan tayinlagan amaliyot rahbari     ____________    {student.company_director}"
-
-    normalize_document_formatting(doc)
-    return doc
-
-
-def format_full_date_label(date_str):
-    parts = parse_date_parts(date_str)
-    return f"{parts['day']} {parts['month']} {parts['year']}-yil"
-
-
-def render_docx_template(template_key, context):
-    template_path = get_available_runtime_template_path(template_key)
-    if not template_path:
-        return None
-
-    template = DocxTemplate(template_path)
-    if not template.get_undeclared_template_variables():
-        return None
-    template.render(context)
-    buffer = io.BytesIO()
-    template.save(buffer)
-    buffer.seek(0)
-    return Document(buffer)
-
-
-def build_common_template_context(student, course, practice_type, start_date_str, end_date_str):
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    direction_label = student.direction or student.faculty
-
-    return {
-        "F_I_SH": student.full_name,
-        "fakulteti": direction_label,
-        "Fakulteti": direction_label,
-        "kurs": str(course),
-        "amaliyot_turi": practice_type,
-        "amaliyot_otish_joyi": student.company,
-        "Amaliyot_otish_joyi": student.company,
-        "boshlanish_sanasi": format_full_date_label(start_date_str),
-        "tugash_sanasi": format_full_date_label(end_date_str),
-        "amaliyotga_kelgan_sana": format_full_date_label(start_date_str),
-        "amaliyotdan_ketgan_sana": format_full_date_label(end_date_str),
-        "korxona_telefoni": student.company_phone,
-        "korxona_rahbari": student.company_director,
-        "Korxona_rahbari": student.company_director,
-        "amaliyot_rahbari": student.company_director,
-        "korxonadagi_amaliyot_rahbari": student.company_director,
-        "universitetdagi_amaliyot_rahbari": student.practice_supervisor,
-        "kafedra": student.faculty,
-        "kafedra_mudiri": student.department_head,
-        "Kafedra_mudiri": student.department_head,
-        "Fakultet_dekani": student.faculty_dean,
-        "talabalar_soni": str(get_company_student_count(student.company)),
-        "korxonadagi_lavozimi": "Amaliyot rahbari",
-        "korxona_vakili_fish_lavozimi": f"{student.company_director}, amaliyot rahbari",
-        "Lavozimi": "Amaliyotchi",
-        "Baho": "5",
-        "Komissiya_raisi": student.practice_supervisor,
-        "TATUdan_ketgan_sana": start_parts["day"],
-        "TATUdan_ketgan_oy": start_parts["month"],
-        "Korxonaga_kelgan_sana": start_parts["day"],
-        "Korxonaga_kelgan_oy": start_parts["month"],
-        "Korxonadan_ketgan_sana": end_parts["day"],
-        "Korxonadan_ketgan_oy": end_parts["month"],
-        "Tatuga_kelgan_sana": end_parts["day"],
-        "Tatuga_kelgan_oy": end_parts["month"],
-    }
-
-
-def build_manual_template_document(template_key):
-    template_path = get_available_runtime_template_path(template_key)
-    if not template_path:
-        return None
-    doc = Document(template_path)
-    normalize_document_formatting(doc)
-    return doc
-
-
-def generate_shartnoma_from_fixed_template(student, course, practice_type, start_date_str, end_date_str):
-    doc = build_manual_template_document("shartnoma")
-    if doc is None:
-        return None
-
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    company_count = get_company_student_count(student.company)
-
-    if len(doc.paragraphs) > 9:
-        doc.paragraphs[0].text = f"TALABALARNING {practice_type.upper()}NI TASHKIL ETISH BO‘YICHA SHARTNOMA"
-        doc.paragraphs[3].text = f"Toshkent sh.                                                                 {start_parts['year']}-yil «{start_parts['day']}»  {start_parts['month']}"
-        doc.paragraphs[6].text = student.company
-        doc.paragraphs[9].text = student.company_director
-
-    if len(doc.tables) >= 2:
-        main_table = doc.tables[0]
-        if len(main_table.rows) > 2 and len(main_table.rows[2].cells) >= 7:
-            main_table.rows[2].cells[1].text = student.direction or student.faculty
-            main_table.rows[2].cells[2].text = str(course)
-            main_table.rows[2].cells[3].text = practice_type
-            main_table.rows[2].cells[4].text = str(company_count)
-            main_table.rows[2].cells[5].text = start_parts["short"]
-            main_table.rows[2].cells[6].text = end_parts["short"]
-
-        info_table = doc.tables[1]
-        if len(info_table.rows) > 4 and len(info_table.rows[0].cells) >= 3:
-            company_block = f"Korxona\n{student.company}\n{student.company_address}\nTel.: {student.company_phone}"
-            info_table.rows[0].cells[1].text = company_block
-            info_table.rows[0].cells[2].text = company_block
-            info_table.rows[4].cells[0].text = (
-                f"Kafedra mudiri: ____________ {student.department_head}\n"
-                "(imzo)                                (F.I.Sh.)"
-            )
-            info_table.rows[4].cells[1].text = (
-                f"Fakultet dekani: ____________ {student.faculty_dean}\n"
-                "(imzo)                                (F.I.Sh.)"
-            )
-            info_table.rows[4].cells[2].text = (
-                "Korxonadan ajratilgan\n"
-                f"amaliyot rahbari: ____________ {student.company_director}\n"
-                "(imzo)                      (F.I.Sh.)"
-            )
-    normalize_document_formatting(doc)
-    return doc
-
-
-def generate_kundalik_from_fixed_template(student, course, practice_type, start_date_str, end_date_str):
-    doc = build_manual_template_document("kundalik")
-    if doc is None:
-        return None
-
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    academic_year = f"{start_parts['year']}/{int(start_parts['year']) + 1}"
-    direction_label = student.direction or student.faculty
-
-    replacements = {
-        5: f"{direction_label} ta’lim yo‘nalishi {course} - bosqich talabasi {student.full_name} ning {academic_year} o‘quv yilidagi {practice_type.lower()}",
-        10: f"1.1. Amaliyot joyi va muddati {student.company}, {student.company_address} muddati: {start_parts['short']} dan   {end_parts['short']} gacha",
-        12: f"Universitetdan: ____________ {student.practice_supervisor}",
-        14: f"Korxonadan: ____________ {student.company_director}",
-        16: f"1.3. Talaba {student.full_name} ga “{student.faculty}” kafedrasidan berilgan individual topshiriqlar {practice_type.lower()} bo‘yicha kundalik yuritish va hisobot tayyorlash.",
-        17: f"1.4. Amaliyotga keldi: {start_parts['year']}-yil {start_parts['day']}-{start_parts['month']},  ketdi: {end_parts['year']}-yil {end_parts['day']}-{end_parts['month']}",
-        39: f"Universitetdan __________ {student.practice_supervisor} {start_parts['year']}-yil “{start_parts['day']}”  {start_parts['month']}",
-        42: f"Korxonadan    __________ {student.company_director} {end_parts['year']}-yil “{end_parts['day']}” {end_parts['month']}",
-        56: f"Korxonadan rahbar: ____________ {student.company_director}",
-        59: f"M.O‘. \t\t{end_parts['year']}-yil       “_____”  ____________________",
-        63: f"Universitetdan amaliyot rahbari: _____________ {student.practice_supervisor}",
-        65: f"Kafedra mudiri: _____________ {student.department_head}",
-        67: f"{end_parts['year']}-yil “____” ___________",
-    }
-    for index, text in replacements.items():
-        if index < len(doc.paragraphs):
-            doc.paragraphs[index].text = text
-
-    if course == 3 and 25 < len(doc.paragraphs):
-        doc.paragraphs[25].text = "2.6. Amaliyot muddati 3-bosqichda o‘quv reja asosida belgilanadi."
-
-    normalize_document_formatting(doc)
-    return doc
-
-
-def generate_yollanma_from_fixed_template(student, course, practice_type, start_date_str, end_date_str):
-    doc = build_manual_template_document("yollanma")
-    if doc is None:
-        return None
-
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    direction_label = student.direction or student.faculty
-
-    replacements = {
-        4: f"Muxammad al-Xorazmiy nomidagi Toshkent axborot texnologiyalari universiteti O‘zbekiston Respublikasi oliy va o‘rta maxsus ta’lim vazirligi tomonidan tasdiqlangan “Oliy ta’lim muassasalari talabalarining malaka amaliyotini o‘tash tartibi to‘g‘risidagi nizom” va {student.company}",
-        6: f"{student.company} hamda Muxammad al-Xorazmiy nomidagi TATU o‘rtasidagi shartnoma asosida",
-        7: f"{direction_label} ta’lim yo‘nalishida tahsil olayotgan talaba",
-        9: f"{student.full_name} {practice_type.lower()}ni o‘tash uchun",
-        12: f"{student.company} ga yubormoqda.",
-        15: f"Amaliyot muddati:     {start_parts['short']}-yildan,       {end_parts['short']} yilgacha",
-        19: f"TATU dan ketdi: “{start_parts['day']}” {start_parts['month']} {start_parts['year']}-yil                              Korxonaga keldi: “{start_parts['day']}” {start_parts['month']} {start_parts['year']}-yil",
-        20: f"Fakultet dekani: _____________________ {student.faculty_dean}                                 Korxona rahbari: _____________________ {student.company_director}",
-        23: "M.O‘.: ______________                                                              M.O‘.: ______________",
-        26: f"Korxonadan ketdi: “{end_parts['day']}” {end_parts['month']} {end_parts['year']}-yil                               TATU ga keldi: “{end_parts['day']}” {end_parts['month']} {end_parts['year']}-yil",
-        28: f"Korxona rahbari: _____________________ {student.company_director}                                 Fakultet dekani: _____________________ {student.faculty_dean}",
-        31: "M.O‘.: ______________                                                              M.O‘.: ______________",
-        37: student.full_name,
-        39: f"{student.company} ga amaliyotga keldi.",
-        41: "Texnika xavfsizligi bo‘yicha sinovni “5” bahoga topshirdi va amaliyotni o‘tashga ruxsat berildi.",
-        44: f"Komissiya raisi: ____________ {student.practice_supervisor}",
-        49: f"Talaba: {student.full_name}",
-        52: "ishga qo‘yildi: Amaliyotchi",
-        59: f"Korxonadan tayinlagan amaliyot rahbari: ____________ {student.company_director}",
-    }
-    for index, text in replacements.items():
-        if index < len(doc.paragraphs):
-            doc.paragraphs[index].text = text
-
-    normalize_document_formatting(doc)
-    return doc
-
-
-def format_yollanma_rendered_document(doc, student, start_date_str, end_date_str):
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-
-    replacements = {
-        11: (
-            f"TATU dan ketdi: “{start_parts['day']}” {start_parts['month']} {start_parts['year']}-yil"
-            f"                              Korxonaga keldi: “{start_parts['day']}” {start_parts['month']} {start_parts['year']}-yil"
-        ),
-        12: (
-            f"Fakultet dekani: ____________ {student.faculty_dean}"
-            f"                              Korxona rahbari: ____________ {student.company_director}"
-        ),
-        14: "M.O‘.: ____________                                                              M.O‘.: ____________",
-        17: (
-            f"Korxonadan ketdi: “{end_parts['day']}” {end_parts['month']} {end_parts['year']}-yil"
-            f"                               TATU ga keldi: “{end_parts['day']}” {end_parts['month']} {end_parts['year']}-yil"
-        ),
-        19: (
-            f"Korxona rahbari: ____________ {student.company_director}"
-            f"                              Fakultet dekani: ____________ {student.faculty_dean}"
-        ),
-        21: "M.O‘.: ____________                                                              M.O‘.: ____________",
-        27: f"Talaba: {student.full_name}    Korxona: {student.company}    amaliyotga keldi.",
-        30: f"Komissiya raisi: ____________ {student.practice_supervisor}",
-        35: f"Talaba: {student.full_name}    Lavozimi: Amaliyotchi",
-        39: f"Korxonadan tayinlangan amaliyot rahbari: ____________ {student.company_director}",
-        45: f"Baho: _____ ballga topshirdi.           Kafedra mudiri: ____________ {student.department_head}           Sana: ______",
-    }
-
-    for index, text in replacements.items():
-        if index < len(doc.paragraphs):
-            doc.paragraphs[index].text = text
-
-    normalize_document_formatting(doc)
-    return doc
-
-
-def generate_shartnoma_document(student, course, practice_type, start_date_str, end_date_str):
-    context = build_common_template_context(student, course, practice_type, start_date_str, end_date_str)
-    rendered_document = render_docx_template("shartnoma", context)
-    if rendered_document is not None:
-        return rendered_document
-    fixed_template_document = generate_shartnoma_from_fixed_template(student, course, practice_type, start_date_str, end_date_str)
-    if fixed_template_document is not None:
-        return fixed_template_document
-    return build_fallback_document("Shartnoma", student, course, practice_type, start_date_str, end_date_str)
-
-
-def generate_kundalik_document(student, course, practice_type, start_date_str, end_date_str):
-    context = build_common_template_context(student, course, practice_type, start_date_str, end_date_str)
-    rendered_document = render_docx_template("kundalik", context)
-    if rendered_document is not None:
-        return rendered_document
-    fixed_template_document = generate_kundalik_from_fixed_template(student, course, practice_type, start_date_str, end_date_str)
-    if fixed_template_document is not None:
-        return fixed_template_document
-    return build_fallback_document("Kundalik", student, course, practice_type, start_date_str, end_date_str)
-
-
-def generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str):
-    context = build_common_template_context(student, course, practice_type, start_date_str, end_date_str)
-    rendered_document = render_docx_template("yollanma", context)
-    if rendered_document is not None:
-        return format_yollanma_rendered_document(rendered_document, student, start_date_str, end_date_str)
-    fixed_template_document = generate_yollanma_from_fixed_template(student, course, practice_type, start_date_str, end_date_str)
-    if fixed_template_document is not None:
-        return fixed_template_document
-    return build_fallback_document("Yo'llanma", student, course, practice_type, start_date_str, end_date_str)
-
-
-def generate_kundalik_document(student, course, practice_type, start_date_str, end_date_str):
-    context = build_common_template_context(student, course, practice_type, start_date_str, end_date_str)
-    rendered_document = render_docx_template("kundalik", context)
-    if rendered_document is not None:
-        return rendered_document
-
-    doc = build_manual_template_document("kundalik")
-    if doc is None:
-        return build_fallback_document("Kundalik", student, course, practice_type, start_date_str, end_date_str)
-
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    academic_year = f"{start_parts['year']}/{int(start_parts['year']) + 1}"
-    direction_label = student.direction or student.faculty
-
-    base_replacements = {
-        5: f"{direction_label} ta'lim yo'nalishi {course} - bosqich talabasi {student.full_name} ning {academic_year} o'quv yilidagi {practice_type.lower()}",
-        10: f"1.1. Amaliyot joyi va muddati {student.company}, {student.company_address} muddati: {start_parts['short']} dan   {end_parts['short']} gacha",
-        12: "Universitetdan",
-        14: "Korxonadan",
-        16: f"1.3. Talaba {student.full_name} ga \"{student.faculty}\" kafedrasidan berilgan individual topshiriqlar {practice_type.lower()} bo'yicha kundalik yuritish va hisobot tayyorlash.",
-        17: f"1.4. Amaliyotga keldi: {format_document_date(start_date_str)},  ketdi: {format_document_date(end_date_str)}",
-        56: "Korxonadan rahbar",
-        59: f"M.O'. \t\t{end_parts['year']}-yil       \"_____\"  ____________________",
-        63: "Universitetdan amaliyot rahbari",
-        65: "Kafedra mudiri",
-        67: f"{end_parts['year']}-yil \"____\" ___________",
-    }
-    for index, text in base_replacements.items():
-        if index < len(doc.paragraphs):
-            doc.paragraphs[index].text = text
-
-    if course == 3 and 25 < len(doc.paragraphs):
-        doc.paragraphs[25].text = "2.6. Amaliyot muddati 3-bosqichda o'quv reja asosida belgilanadi."
-
-    if 39 < len(doc.paragraphs):
-        set_paragraph_segments(
-            doc.paragraphs[39],
-            [
-                ("Universitetdan ", False),
-                ("____________ ", False),
-                (student.practice_supervisor, True),
-                (" ", False),
-                (format_document_date(start_date_str), True),
-            ],
-        )
-    if 40 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[40], [("Imzo", False, True), ("\t\t         ", False), ("F.I.Sh.", False, True)])
-    if 42 < len(doc.paragraphs):
-        set_paragraph_segments(
-            doc.paragraphs[42],
-            [
-                ("Korxonadan ", False),
-                ("____________ ", False),
-                (student.company_director, True),
-                (" ", False),
-                (format_document_date(end_date_str), True),
-            ],
-        )
-    if 43 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[43], [("Imzo", False, True), ("\t\t         ", False), ("F.I.Sh.", False, True)])
-    if 56 < len(doc.paragraphs):
-        set_paragraph_segments(
-            doc.paragraphs[56],
-            [
-                ("Korxonadan rahbar          ", False),
-                ("________________ ", False),
-                (student.company_director, True),
-            ],
-        )
-    if 57 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[57], [("imzo", False, True), ("                                                              ", False), ("F.I.Sh.", False, True)])
-    if 63 < len(doc.paragraphs):
-        set_paragraph_segments(
-            doc.paragraphs[63],
-            [
-                ("Universitetdan amaliyot rahbari      ", False),
-                ("_____________ ", False),
-                (student.practice_supervisor, True),
-            ],
-        )
-    if 64 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[64], [("imzo", False, True), ("                                                              ", False), ("F.I.Sh.", False, True)])
-    if 65 < len(doc.paragraphs):
-        set_paragraph_segments(
-            doc.paragraphs[65],
-            [
-                ("Kafedra mudiri                                ", False),
-                ("_____________ ", False),
-                (student.department_head, True),
-            ],
-        )
-    if 66 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[66], [("imzo", False, True), ("                                                              ", False), ("F.I.Sh.", False, True)])
-
-    normalize_document_formatting(doc)
-    return doc
-
-
-
-
-
-def generate_shartnoma_document(student, course, practice_type, start_date_str, end_date_str):
-    doc = build_manual_template_document("shartnoma")
-    if doc is None:
-        return build_fallback_document("Shartnoma", student, course, practice_type, start_date_str, end_date_str)
-
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    company_count = get_company_student_count(student.company)
-
-    if len(doc.paragraphs) > 9:
-        doc.paragraphs[0].text = f"TALABALARNING {practice_type.upper()}NI TASHKIL ETISH BO'YICHA SHARTNOMA"
-        doc.paragraphs[3].text = f"Toshkent sh.                                                                 {start_parts['year']}-yil \"{start_parts['day']}\" {start_parts['month']}"
-        doc.paragraphs[6].text = student.company
-        doc.paragraphs[9].text = student.company_director
-
-    if len(doc.tables) >= 2:
-        main_table = doc.tables[0]
-        if len(main_table.rows) > 2 and len(main_table.rows[2].cells) >= 7:
-            row = main_table.rows[2].cells
-            row[1].text = student.direction or student.faculty
-            row[2].text = str(course)
-            row[3].text = practice_type
-            row[4].text = str(company_count)
-            row[5].text = start_parts["short"]
-            row[6].text = end_parts["short"]
-            style_cell(row[0], font_size_pt=10)
-            style_cell(row[1], font_size_pt=9)
-            style_cell(row[2], font_size_pt=10)
-            style_cell(row[3], font_size_pt=9)
-            style_cell(row[4], font_size_pt=10)
-            style_cell(row[5], font_size_pt=9)
-            style_cell(row[6], font_size_pt=9)
-
-        info_table = doc.tables[1]
-        if len(info_table.rows) > 4 and len(info_table.rows[0].cells) >= 3:
-            contact_block = f"{student.company_address}\nTel.: {student.company_phone}"
-            info_table.rows[0].cells[1].text = contact_block
-            style_cell(info_table.rows[0].cells[1], horizontal=WD_ALIGN_PARAGRAPH.CENTER, font_size_pt=10)
-
-            info_table.rows[4].cells[1].text = (
-                f"Fakultet dekani: ____________ {student.faculty_dean}\n"
-                "(imzo)                                (F.I.Sh.)"
-            )
-            info_table.rows[4].cells[2].text = (
-                "Korxonadan ajratilgan\n"
-                f"amaliyot rahbari: ____________ {student.company_director}\n"
-                "(imzo)                      (F.I.Sh.)"
-            )
-            style_cell(info_table.rows[4].cells[1], horizontal=WD_ALIGN_PARAGRAPH.CENTER, font_size_pt=10)
-            style_cell(info_table.rows[4].cells[2], horizontal=WD_ALIGN_PARAGRAPH.CENTER, font_size_pt=10)
-
-    normalize_document_formatting(doc)
-    return doc
-
-
-def generate_yollanma_document(student, course, practice_type, start_date_str, end_date_str):
-    doc = build_manual_template_document("yollanma")
-    if doc is None:
-        return build_fallback_document("Yo'llanma", student, course, practice_type, start_date_str, end_date_str)
-
-    start_parts = parse_date_parts(start_date_str)
-    end_parts = parse_date_parts(end_date_str)
-    direction_label = student.direction or student.faculty
-
-    if 4 < len(doc.paragraphs):
-        doc.paragraphs[4].text = (
-            "Muxammad al-Xorazmiy nomidagi Toshkent axborot texnologiyalari universiteti O'zbekiston Respublikasi oliy va o'rta maxsus ta'lim vazirligi tomonidan tasdiqlangan "
-            "\"Oliy ta'lim muassasalari talabalarining malaka amaliyotini o'tash tartibi to'g'risidagi nizom\" va"
-        )
-    if 5 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[5], [(student.company, True)])
-        center_paragraph(doc.paragraphs[5], font_size_pt=11)
-    if 6 < len(doc.paragraphs):
-        doc.paragraphs[6].text = "hamda Muxammad al-Xorazmiy nomidagi TATU o'rtasidagi shartnoma asosida"
-    if 7 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[7], [(direction_label, True)])
-        center_paragraph(doc.paragraphs[7], font_size_pt=11)
-    if 8 < len(doc.paragraphs):
-        doc.paragraphs[8].text = ""
-    if 9 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[9], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[9], font_size_pt=11)
-    if 10 < len(doc.paragraphs):
-        doc.paragraphs[10].text = ""
-    if 12 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[12], [(student.company, True)])
-        center_paragraph(doc.paragraphs[12], font_size_pt=11)
-    if 13 < len(doc.paragraphs):
-        doc.paragraphs[13].text = ""
-    if 15 < len(doc.paragraphs):
-        doc.paragraphs[15].text = f"Amaliyot muddati:     {start_parts['short']}-yildan,       {end_parts['short']} yilgacha"
-    if 19 < len(doc.paragraphs):
-        doc.paragraphs[19].text = f"TATU dan ketdi: \"{start_parts['day']}\" {start_parts['month']} {start_parts['year']}-yil                              Korxonaga keldi: \"{start_parts['day']}\" {start_parts['month']} {start_parts['year']}-yil"
-    if 20 < len(doc.paragraphs):
-        doc.paragraphs[20].text = f"Fakultet dekani: _____________________ {student.faculty_dean}                                 Korxona rahbari: _____________________ {student.company_director}"
-    if 21 < len(doc.paragraphs):
-        doc.paragraphs[21].text = ""
-    if 26 < len(doc.paragraphs):
-        doc.paragraphs[26].text = f"Korxonadan ketdi: \"{end_parts['day']}\" {end_parts['month']} {end_parts['year']}-yil                               TATU ga keldi: \"{end_parts['day']}\" {end_parts['month']} {end_parts['year']}-yil"
-    if 28 < len(doc.paragraphs):
-        doc.paragraphs[28].text = f"Korxona rahbari: _____________________ {student.company_director}                                 Fakultet dekani: _____________________ {student.faculty_dean}"
-    if 29 < len(doc.paragraphs):
-        doc.paragraphs[29].text = ""
-    if 37 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[37], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[37], font_size_pt=11)
-    if 38 < len(doc.paragraphs):
-        doc.paragraphs[38].text = ""
-    if 39 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[39], [(student.company, True)])
-        center_paragraph(doc.paragraphs[39], font_size_pt=11)
-    if 40 < len(doc.paragraphs):
-        doc.paragraphs[40].text = ""
-    if 41 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[41], [("Texnika xavfsizligi bo'yicha sinovni \"", False), ("5", True), ("\" bahoga topshirdi va amaliyotni o'tashga ruxsat berildi.", False)])
-    if 44 < len(doc.paragraphs):
-        doc.paragraphs[44].text = f"Komissiya raisi       ____________    {student.practice_supervisor}"
-    if 45 < len(doc.paragraphs):
-        doc.paragraphs[45].text = ""
-    if 49 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[49], [(student.full_name, True)])
-        center_paragraph(doc.paragraphs[49], font_size_pt=11)
-    if 50 < len(doc.paragraphs):
-        doc.paragraphs[50].text = ""
-    if 52 < len(doc.paragraphs):
-        set_paragraph_segments(doc.paragraphs[52], [("Amaliyotchi", True)])
-        center_paragraph(doc.paragraphs[52], font_size_pt=11)
-    if 53 < len(doc.paragraphs):
-        doc.paragraphs[53].text = ""
-    if 59 < len(doc.paragraphs):
-        doc.paragraphs[59].text = f"Korxonadan tayinlagan amaliyot rahbari     ____________    {student.company_director}"
-
-    normalize_document_formatting(doc)
-    return doc
-
-
-
+    return render(request, "app_excel/403_csrf.html", status=403)

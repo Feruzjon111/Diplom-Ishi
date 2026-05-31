@@ -18,9 +18,11 @@ Thumbs.db
 *.env
 
 *.docx
+!app_excel/templates/app_excel/*_template.docx
 *.xlsx
 *.zip
 *.bak
+*.log
 
 media/
 staticfiles/
