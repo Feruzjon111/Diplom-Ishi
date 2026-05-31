@@ -1,0 +1,25 @@
+databases:
+  - name: amaliyotdocx-db
+    plan: free
+    databaseName: amaliyotdocx
+    user: amaliyotdocx
+
+services:
+  - type: web
+    name: amaliyotdocx
+    runtime: python
+    plan: free
+    buildCommand: ./build.sh
+    startCommand: python -m gunicorn amaliyotdocx.wsgi:application --bind 0.0.0.0:$PORT
+    healthCheckPath: /
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: amaliyotdocx-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: WEB_CONCURRENCY
+        value: "2"

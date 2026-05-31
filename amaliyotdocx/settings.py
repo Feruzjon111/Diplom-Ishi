@@ -23,12 +23,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-b6hv(b=y6+b*iohifb$me$2k&=&bl^hwb2d3wrwcu6@z)qa$1e'
+SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-b6hv(b=y6+b*iohifb$me$2k&=&bl^hwb2d3wrwcu6@z)qa$1e")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() == "true"
+DEBUG = os.getenv("DJANGO_DEBUG", "False" if os.getenv("RENDER") else "True").lower() == "true"
 
 ALLOWED_HOSTS = ['.onrender.com', '127.0.0.1', 'localhost']
+if os.getenv("RENDER_EXTERNAL_HOSTNAME"):
+    ALLOWED_HOSTS.append(os.getenv("RENDER_EXTERNAL_HOSTNAME"))
+if os.getenv("ALLOWED_HOSTS"):
+    ALLOWED_HOSTS.extend(host.strip() for host in os.getenv("ALLOWED_HOSTS", "").split(",") if host.strip())
 
 
 
@@ -51,6 +55,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'corsheaders.middleware.CorsMiddleware',
@@ -69,8 +74,17 @@ CORS_ALLOWED_ORIGINS = [
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
-    "http://127.0.0.1:5173"
+    "http://127.0.0.1:5173",
+    "https://*.onrender.com",
 ]
+if os.getenv("RENDER_EXTERNAL_URL"):
+    CSRF_TRUSTED_ORIGINS.append(os.getenv("RENDER_EXTERNAL_URL"))
+if os.getenv("CSRF_TRUSTED_ORIGINS"):
+    CSRF_TRUSTED_ORIGINS.extend(
+        origin.strip()
+        for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
+        if origin.strip()
+    )
 
 ROOT_URLCONF = 'amaliyotdocx.urls'
 
@@ -120,6 +134,7 @@ def build_database_config():
             "PASSWORD": unquote(parsed_url.password or ""),
             "HOST": parsed_url.hostname or "",
             "PORT": str(parsed_url.port or ""),
+            "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "600")),
         }
         if query_options:
             config["OPTIONS"] = query_options
@@ -134,6 +149,7 @@ def build_database_config():
             "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
             "HOST": os.getenv("POSTGRES_HOST", "127.0.0.1"),
             "PORT": os.getenv("POSTGRES_PORT", "5432"),
+            "CONN_MAX_AGE": int(os.getenv("DB_CONN_MAX_AGE", "600")),
         }
 
     return {
@@ -184,10 +200,22 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-STATICFILES_DIRS = [os.path.join(BASE_DIR, 'app_excel/static')]
+
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
+    },
+}
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
 
 
 # Default primary key field type

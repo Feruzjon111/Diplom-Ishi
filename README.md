@@ -132,6 +132,29 @@ $env:DATABASE_URL = 'postgresql://postgres:postgres-parolingiz@127.0.0.1:5432/am
 python manage.py migrate
 ```
 
+## Renderga deploy qilish
+
+Loyiha Render Blueprint orqali deploy qilishga tayyor:
+
+- `render.yaml` - Free Web Service va Free Postgres sozlamalari
+- `build.sh` - dependency install, `collectstatic`, `migrate`, `create_admin`
+- `gunicorn` - production server
+- `WhiteNoise` - static fayllarni serve qilish
+
+Render dashboardda:
+
+1. `New` -> `Blueprint` tanlang.
+2. GitHubdagi `Diplom-Ishi` repositoryni ulang.
+3. Blueprint nomini tasdiqlab `Apply` bosing.
+4. Build tugagach sayt `.onrender.com` URL orqali ochiladi.
+
+Default loginlar build paytida yaratiladi:
+
+- `admin / Admin12345`
+- `operator / Operator12345`
+
+Muhim: Render Free Web Service 15 daqiqa traffic bo'lmasa uxlab qoladi va keyingi kirishda qayta uyg'onishi taxminan 1 daqiqa oladi. Free Render Postgres bazasi 30 kundan keyin expire bo'ladi; uzoq muddatli ishlatish uchun pullik Postgresga o'tish kerak.
+
 ## API endpointlar
 
 ```http
